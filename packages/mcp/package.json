@@ -13,6 +13,6 @@
     "@enve-memory/embeddings": "0.1.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.1.0"
+    "@modelcontextprotocol/client": "^2.3.1"
   }
 }
