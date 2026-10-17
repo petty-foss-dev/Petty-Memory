@@ -17,7 +17,7 @@
     "vendor": "node vendor.mjs",
     "build": "node build.mjs",
     "start": "node build.mjs && node server.ts",
-    "check": "node build.mjs && for f in server.ts build.mjs public/*.js; do node --check \"$f\" || exit 1; done && tsc -p tsconfig.json && npm test",
+    "check": "node build.mjs && node check.mjs && tsc -p tsconfig.json && npm test",
     "test": "node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
