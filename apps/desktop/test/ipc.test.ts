@@ -49,6 +49,11 @@ test('saved views and templates read and write with the right kinds', () => {
   for (const method of ['views.list', 'views.get', 'views.results', 'templates.list'] as Method[]) assert.equal(METHOD_KINDS[method], 'read', method);
 });
 
+test('AI chat only previews, so applying its proposals and organizations stays a separate write', () => {
+  assert.equal(METHOD_KINDS['ai.chat'], 'read');
+  for (const method of ['edits.apply', 'edits.undo', 'organizer.apply', 'organizer.undo'] as Method[]) assert.equal(METHOD_KINDS[method], 'write', method);
+});
+
 test('isMethod rejects inherited and made-up names', () => {
   for (const bad of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'items', 'items.nuke', '', 42, null, undefined, {}, ['items.get']]) {
     assert.equal(isMethod(bad), false, String(bad));

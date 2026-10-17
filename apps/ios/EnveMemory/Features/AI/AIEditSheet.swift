@@ -2,9 +2,10 @@ import EnveMemoryKit
 import SwiftUI
 
 /// Ask your computer's AI to change this item and what's inside it, review each change, apply the ones you keep.
-/// Online only: proposals are never queued or cached.
+/// Online only: proposals are never queued or cached. Opened with a chat's proposal, it only reviews that one.
 struct AIEditSheet: View {
-    let item: Item
+    let rootID: String
+    private let fromChat: Bool
 
     @Environment(Connection.self) private var connection
     @Environment(Router.self) private var router
@@ -20,22 +21,23 @@ struct AIEditSheet: View {
     @State private var working = false
     @State private var error: String?
 
+    init(rootID: String, initialProposal: EditProposal? = nil) {
+        self.rootID = rootID
+        fromChat = initialProposal != nil
+        _proposal = State(initialValue: initialProposal)
+        _selected = State(initialValue: Set(initialProposal?.operations.indices ?? 0..<0))
+    }
+
     var body: some View {
         NavigationStack {
             HearthScreen {
-                Text("Describe the change, for example “group these into sections” or “turn this into a checklist”. Nothing changes until you apply it, and nothing is ever deleted.")
-                    .font(HearthFont.footnote)
-                    .foregroundStyle(hearth.textSecondary)
-                TextField("What should change?", text: $instruction, axis: .vertical)
-                    .lineLimit(2...6)
-                    .hearthField()
-                    .disabled(working)
-                    .accessibilityIdentifier("AIInstruction")
-                Button(action: propose) {
-                    if working, proposal == nil { ProgressView() } else { Label(proposal == nil ? "Propose changes" : "Ask again", systemImage: "sparkles") }
+                if fromChat {
+                    Text("Review what the AI proposed in chat. Nothing changes until you apply it, and nothing is ever deleted.")
+                        .font(HearthFont.footnote)
+                        .foregroundStyle(hearth.textSecondary)
+                } else {
+                    composer
                 }
-                .buttonStyle(.hearthSecondary)
-                .disabled(working || instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let error { ErrorBanner(message: error) }
                 if undo != nil {
                     HearthCard(padding: HearthSpacing.md) {
@@ -47,6 +49,7 @@ struct AIEditSheet: View {
                             Button(working ? "Undoing…" : "Undo AI changes", action: revert)
                                 .buttonStyle(.hearthSecondary)
                                 .disabled(working)
+                                .accessibilityIdentifier("AIUndo")
                         }
                     }
                 }
@@ -60,12 +63,33 @@ struct AIEditSheet: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(working ? "Applying…" : "Apply \(selected.count)", action: apply)
                             .disabled(working || selected.isEmpty)
+                            .accessibilityIdentifier("AIApply")
                     }
                 }
             }
         }
         .tint(hearth.accent)
         .interactiveDismissDisabled(working)
+        .task {
+            if fromChat, let proposal { await loadTitles(for: proposal) }
+        }
+    }
+
+    @ViewBuilder
+    private var composer: some View {
+        Text("Describe the change, for example “group these into sections” or “turn this into a checklist”. Nothing changes until you apply it, and nothing is ever deleted.")
+            .font(HearthFont.footnote)
+            .foregroundStyle(hearth.textSecondary)
+        TextField("What should change?", text: $instruction, axis: .vertical)
+            .lineLimit(2...6)
+            .hearthField()
+            .disabled(working)
+            .accessibilityIdentifier("AIInstruction")
+        Button(action: propose) {
+            if working, proposal == nil { ProgressView() } else { Label(proposal == nil ? "Propose changes" : "Ask again", systemImage: "sparkles") }
+        }
+        .buttonStyle(.hearthSecondary)
+        .disabled(working || instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     @ViewBuilder
@@ -94,7 +118,7 @@ struct AIEditSheet: View {
         Task {
             defer { working = false }
             do {
-                let result = try await client.send(.proposeEdit(rootId: item.id, instruction: instruction), as: EditProposal.self)
+                let result = try await client.send(.proposeEdit(rootId: rootID, instruction: instruction), as: EditProposal.self)
                 proposal = result
                 selected = Set(result.operations.indices)
                 await loadTitles(for: result)
@@ -165,7 +189,7 @@ struct AIEditSheet: View {
     /// Names for the parents and anchors that moves and new notes refer to.
     private func loadTitles(for proposal: EditProposal) async {
         var ids = Set(proposal.operations.flatMap { [$0.parentId, $0.beforeId, $0.before?.parentId].compactMap(\.self) })
-        ids.insert(item.id)
+        ids.insert(rootID)
         titles.merge(proposal.titles ?? [:]) { current, _ in current }
         for operation in proposal.operations {
             if let id = operation.id, let before = operation.before { titles[id] = before.title }

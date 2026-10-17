@@ -1,4 +1,4 @@
-import type { ItemType, SearchHit } from '@enve-memory/core';
+import type { ItemFilter, ItemType, SearchHit } from '@enve-memory/core';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { call, errorMessage } from '../lib/api.ts';
 import { TYPE_LABELS, displayTitle, firstLine } from '../lib/format.ts';
@@ -16,9 +16,10 @@ const PAGE = 25;
 const MAX_HITS = 200;
 
 /** Finds one item by searching, or from the most recent ones. `footer` sits above the actions (e.g. a kind choice). */
-export function ItemPicker({ title, exclude = [], footer, onPick, onClose }: {
+export function ItemPicker({ title, exclude = [], filter = {}, footer, onPick, onClose }: {
   title: string;
   exclude?: string[];
+  filter?: ItemFilter;
   footer?: ReactNode;
   onPick: (item: Picked) => void;
   onClose: () => void;
@@ -33,11 +34,11 @@ export function ItemPicker({ title, exclude = [], footer, onPick, onClose }: {
   const load = (text: string, found: Picked[], cursor: string | null, limit: number) => {
     const id = ++request.current;
     const run: Promise<{ items: Picked[]; next: (() => void) | null }> = text
-      ? call('search.hybrid', text, {}, limit).then((hits) => ({
+      ? call('search.hybrid', text, filter, limit).then((hits) => ({
         items: hits.map((hit) => ({ id: hit.id, title: hitTitle(hit), type: hit.type })),
         next: hits.length === limit && limit < MAX_HITS ? () => load(text, [], null, Math.min(MAX_HITS, limit + PAGE)) : null,
       }))
-      : call('items.page', {}, cursor, PAGE).then((page) => {
+      : call('items.page', filter, cursor, PAGE).then((page) => {
         const items = [...found, ...page.items.map((item) => ({ id: item.id, title: displayTitle(item), type: item.type }))];
         const after = page.next;
         return { items, next: after ? () => load(text, items, after, PAGE) : null };

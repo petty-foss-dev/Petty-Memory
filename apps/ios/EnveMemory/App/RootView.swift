@@ -122,6 +122,7 @@ struct MainView: View {
             case .savedViews: SavedViewsView()
             case .savedView(let id): SavedViewResultsView(viewID: id)
             case .templates: TemplatesView()
+            case .aiChat: AIChatView()
             }
         }
         .id(route)

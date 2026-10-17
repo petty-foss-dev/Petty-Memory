@@ -1,5 +1,5 @@
-import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type SavedViewInput, type SyncRecord } from '@enve-memory/core';
-import { type AiProvider, proposeEdit } from '@enve-memory/ai';
+import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type OrganizationProposal, type SavedViewInput, type SyncRecord } from '@enve-memory/core';
+import { type AiProvider, type ChatRequest, PROVIDERS, chat, proposeEdit } from '@enve-memory/ai';
 import { HttpError } from './errors.ts';
 
 export interface RouteContext {
@@ -154,7 +154,7 @@ export const routes: Route[] = [
     method: 'GET', pattern: path('/capabilities'), scope: 'read',
     handle: ({ memory }) => ({
       api: 1, schema: memory.schemaVersion,
-      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates'],
+      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates', 'ai-chat', 'library-organization'],
       maxWait: 25_000,
     }),
   },
@@ -284,6 +284,34 @@ export const routes: Route[] = [
   {
     method: 'DELETE', pattern: path('/items/:id/relations'), scope: 'write',
     handle: ({ memory, params, body }) => memory.items.unrelate(params[0]!, str(body, 'toId') ?? '', str(body, 'kind') ?? ''),
+  },
+  {
+    method: 'GET', pattern: path('/ai/status'), scope: 'read',
+    handle: ({ aiProvider }) => {
+      const provider = aiProvider();
+      if (!provider || provider.id === 'none') return { configured: false, provider: 'none', label: 'No AI configured', model: null, cloud: false };
+      return {
+        configured: true, provider: provider.id, label: PROVIDERS[provider.id].label, model: provider.model,
+        cloud: ['openai', 'anthropic', 'gemini', 'openrouter'].includes(provider.id),
+      };
+    },
+  },
+  {
+    method: 'POST', pattern: path('/ai/chat'), scope: 'read',
+    handle: ({ memory, client, body, aiProvider }) => {
+      if (['edit', 'organize'].includes(body?.mode as string) && !client.scopes.includes('write')) throw new HttpError(403, 'insufficient_scope', 'This client needs the "write" scope to request changes.');
+      const provider = aiProvider();
+      if (!provider) throw new HttpError(400, 'invalid', 'Configure an AI provider on the host first with `petty-memory ai use`.');
+      return chat(memory, provider, body as unknown as ChatRequest);
+    },
+  },
+  {
+    method: 'POST', pattern: path('/ai/organize/apply'), scope: 'write',
+    handle: ({ memory, body }) => memory.organizer.apply(body?.proposal as OrganizationProposal, strList(body, 'includeIds')),
+  },
+  {
+    method: 'POST', pattern: path('/ai/organize/undo'), scope: 'write',
+    handle: ({ memory, body }) => memory.organizer.undo(body?.receipt as Parameters<EnveMemory['organizer']['undo']>[0]),
   },
   {
     method: 'POST', pattern: path('/ai/edit'), scope: 'write',

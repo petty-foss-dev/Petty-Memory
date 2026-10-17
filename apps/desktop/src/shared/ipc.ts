@@ -1,9 +1,9 @@
-import type { Answer } from '@enve-memory/ai';
+import type { Answer, ChatRequest, ChatResponse } from '@enve-memory/ai';
 import type {
   ApiClient, Backup, Change, ClientScope, CreateProjectInput, CreateRuleInput, CreateTaskInput, Decision, EditProposal, EditorActionResult,
   EditorCommand, EnveMemory,
-  ExportSummary, Graph, Item, Intent, ItemDetail, ItemFilter, ItemPresentation, ItemType, ItemVersion, ItemVersionSummary, OutlineEntry,
-  OutlineListOptions, OutlineMoveInput, OutlineNoteInput, OutlinePage, Project, ProjectBriefing, PublicShare, RecordDecisionInput,
+  ExportSummary, Graph, Item, Intent, ItemDetail, ItemFilter, ItemPresentation, ItemType, ItemVersion, ItemVersionSummary, OrganizationProposal,
+  OrganizationReceipt, OrganizationResult, OutlineEntry, OutlineListOptions, OutlineMoveInput, OutlineNoteInput, OutlinePage, Project, ProjectBriefing, PublicShare, RecordDecisionInput,
   RelatedItem, Rule, SaveLinkInput, SaveNoteInput, SavedView, SavedViewInput, SearchHit, Settings, SyncResult, Task, TemplateUseInput,
   UpdateItemInput, UpdateProjectInput, UpdateTaskInput, VaultState, ViewPage,
 } from '@enve-memory/core';
@@ -268,6 +268,8 @@ export interface Api {
   'edits.propose': (rootId: string, instruction: string) => EditProposal;
   'edits.apply': (proposal: EditProposal) => ReturnType<EnveMemory['edits']['apply']>;
   'edits.undo': (receipt: EditUndoReceipt) => ReturnType<EnveMemory['edits']['undo']>;
+  'organizer.apply': (proposal: OrganizationProposal, includeIds?: string[]) => OrganizationResult;
+  'organizer.undo': (receipt: OrganizationReceipt) => EditorActionResult;
 
   'vault.state': () => VaultState;
   'vault.setup': (passphrase: string) => VaultState;
@@ -338,6 +340,8 @@ export interface Api {
   'ai.setEnrich': (on: boolean) => AiStatus;
   'ai.setAutoApply': (on: boolean) => AiStatus;
   'ai.ask': (question: string, project?: string) => Answer;
+  /** Previews only; the renderer keeps the conversation. */
+  'ai.chat': (request: ChatRequest) => ChatResponse;
 
   'clients.list': () => ApiClient[];
   'clients.create': (name: string, scopes: ClientScope[]) => { client: ApiClient; token: string };
@@ -429,6 +433,8 @@ export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
   'edits.propose': 'read',
   'edits.apply': 'write',
   'edits.undo': 'write',
+  'organizer.apply': 'write',
+  'organizer.undo': 'write',
   'vault.state': 'read',
   'vault.setup': 'write',
   'vault.unlock': 'write',
@@ -484,6 +490,7 @@ export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
   'ai.setEnrich': 'write',
   'ai.setAutoApply': 'write',
   'ai.ask': 'read',
+  'ai.chat': 'read',
   'clients.list': 'read',
   'clients.create': 'write',
   'clients.pair': 'write',

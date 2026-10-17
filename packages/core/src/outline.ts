@@ -114,11 +114,11 @@ export class OutlineService {
   }
 
   /** Creates the note already nested, in one transaction, at the end of `parentId`'s children. */
-  createNote({ id, parentId, title, body, project, tags }: OutlineNoteInput): OutlineEntry {
+  createNote({ id, parentId, title, body, project, tags }: OutlineNoteInput, { automations = true }: { automations?: boolean } = {}): OutlineEntry {
     if (!title?.trim() && !body?.trim()) throw invalid('A note needs a title or some text.');
     return this.get(this.items.insert({
       type: 'note', title, body, project, tags, parentId, ...(id !== undefined && { id: clientId(id, 'Note id') }),
-    }));
+    }, { automations }));
   }
 
   private nextSibling(id: string, parentId: string | null, sortOrder: number): string | null {

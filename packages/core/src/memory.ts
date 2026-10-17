@@ -11,6 +11,7 @@ import { EmbeddingService } from './embeddings.ts';
 import { ExportService } from './export.ts';
 import { FeedService } from './feed.ts';
 import { ItemService, MAX_LIMIT } from './items.ts';
+import { OrganizerService } from './organizer.ts';
 import { OutlineService } from './outline.ts';
 import { type MemoryPaths, defaultHome, pathsFor } from './paths.ts';
 import { ProjectService, captureMemoryVersions } from './projects.ts';
@@ -65,6 +66,7 @@ export class EnveMemory {
   readonly feed: FeedService;
   readonly views: ViewService;
   readonly templates: TemplateService;
+  readonly organizer: OrganizerService;
   private readonly db: DatabaseSync;
   private readonly ctx: Context;
 
@@ -108,6 +110,7 @@ export class EnveMemory {
     this.feed = new FeedService(this.ctx, this.items, this.projects);
     this.views = new ViewService(this.ctx, this.items, this.projects);
     this.templates = new TemplateService(this.ctx, this.items, this.projects);
+    this.organizer = new OrganizerService(this.ctx, this.editor);
   }
 
   get actor(): string {

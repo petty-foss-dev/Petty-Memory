@@ -52,12 +52,17 @@ function Operation({ operation, names }: { operation: EditOperation; names: Map<
   }
 }
 
-/** Asks the configured AI for changes to one item and what's inside it, then applies only what the user keeps. */
-export function AiEditDialog({ rootId, title, onClose }: { rootId: string; title: string; onClose: () => void }) {
+/** Asks the AI for changes to one item and what's inside it, then applies only what the user keeps. `initialProposal` skips to review. */
+export function AiEditDialog({ rootId, title, initialProposal, onClose }: {
+  rootId: string;
+  title: string;
+  initialProposal?: EditProposal;
+  onClose: () => void;
+}) {
   const { toast } = useFeedback();
   const [instruction, setInstruction] = useState('');
-  const [proposal, setProposal] = useState<EditProposal | null>(null);
-  const [kept, setKept] = useState<boolean[]>([]);
+  const [proposal, setProposal] = useState<EditProposal | null>(initialProposal ?? null);
+  const [kept, setKept] = useState<boolean[]>(() => initialProposal?.operations.map(() => true) ?? []);
   const [applied, setApplied] = useState<{ count: number; receipt: EditUndoReceipt | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +165,9 @@ export function AiEditDialog({ rootId, title, onClose }: { rootId: string; title
             </ul>
           )}
           <div className="dialog-actions">
-            <button className="button ghost" disabled={busy} onClick={() => setProposal(null)}>Back</button>
+            {initialProposal
+              ? <button className="button ghost" disabled={busy} onClick={onClose}>Cancel</button>
+              : <button className="button ghost" disabled={busy} onClick={() => setProposal(null)}>Back</button>}
             <button className="button primary" disabled={busy || count === 0} onClick={() => void apply()}>
               {busy ? 'Applying…' : `Apply ${count} change${count === 1 ? '' : 's'}`}
             </button>

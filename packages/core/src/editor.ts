@@ -97,12 +97,12 @@ export class EditorService {
     ctx.db.exec(CAPTURE);
   }
 
-  /** Applies every command or none. Repeating an action id with the same commands returns the original result. */
-  apply(commands: EditorCommand[], options: { id?: string } = {}): EditorActionResult {
+  // Structural generation can skip capture rules; ordinary editor creates still run them.
+  apply(commands: EditorCommand[], options: { id?: string; automations?: boolean } = {}): EditorActionResult {
     if (!Array.isArray(commands) || commands.length === 0) throw invalid('Send at least one editor command.');
     if (commands.length > MAX_COMMANDS) throw invalid(`Send at most ${MAX_COMMANDS} editor commands at once.`);
     const actionId = options?.id === undefined ? newId() : clientId(options.id, 'Action id');
-    const hash = createHash('sha256').update(JSON.stringify(commands)).digest('hex');
+    const hash = createHash('sha256').update(JSON.stringify(options?.automations === false ? { commands, automations: false } : commands)).digest('hex');
     return this.ctx.tx(() => {
       const existing = this.ctx.get<ActionRow>(`SELECT * FROM editor_actions WHERE id = ?`, actionId);
       if (existing) {
@@ -114,7 +114,7 @@ export class EditorService {
       this.ctx.run(`INSERT INTO editor_capture (active) VALUES (1)`);
       let steps: Step[];
       try {
-        steps = commands.map((command: unknown) => this.run(command));
+        steps = commands.map((command: unknown) => this.run(command, options?.automations ?? true));
       } finally {
         this.ctx.run(`DELETE FROM editor_capture`);
       }
@@ -167,12 +167,12 @@ export class EditorService {
     return row;
   }
 
-  private run(raw: unknown): Step {
+  private run(raw: unknown, automations: boolean): Step {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw invalid('Each editor command must be an object.');
     const command = raw as Record<string, unknown>;
     switch (command.op) {
       case 'create':
-        return this.create(command);
+        return this.create(command, automations);
       case 'update': {
         const id = ref(command.id, 'id');
         const title = text(command.title, 'title');
@@ -201,7 +201,7 @@ export class EditorService {
         return onItem(command.checked ? 'Check off' : 'Uncheck', id);
       }
       case 'split':
-        return this.split(command);
+        return this.split(command, automations);
       case 'merge':
         return this.merge(command);
       default:
@@ -209,7 +209,7 @@ export class EditorService {
     }
   }
 
-  private create(command: Record<string, unknown>): Step {
+  private create(command: Record<string, unknown>, automations: boolean): Step {
     const parentId = nullableRef(command.parentId, 'parentId');
     const beforeId = command.beforeId === undefined ? null : nullableRef(command.beforeId, 'beforeId');
     if (command.tags !== undefined && !(Array.isArray(command.tags) && command.tags.every((tag) => typeof tag === 'string'))) {
@@ -218,13 +218,13 @@ export class EditorService {
     const id = this.outline.createNote({
       id: command.id as string | undefined, parentId, title: text(command.title, 'title'), body: text(command.body, 'body'),
       project: text(command.project, 'project'), tags: command.tags as string[] | undefined,
-    }).item.id;
+    }, { automations }).item.id;
     if (beforeId !== null) this.outline.move(id, { parentId, beforeId });
     return { label: 'New note', focusId: id, undoFocusId: this.neighbour(id), created: id };
   }
 
   // A title split leaves the body on the original; a body split leaves the title. Existing children stay on the original.
-  private split(command: Record<string, unknown>): Step {
+  private split(command: Record<string, unknown>, automations: boolean): Step {
     const row = this.note(ref(command.id, 'id'), 'split');
     if (command.field !== 'title' && command.field !== 'body') throw invalid('field must be "title" or "body".');
     const field = command.field;
@@ -253,7 +253,7 @@ export class EditorService {
     const created = this.outline.createNote({
       id: command.newId as string | undefined, parentId, project: row.project_id ?? undefined,
       ...(field === 'title' ? { title: tail } : { body: tail }),
-    }).item.id;
+    }, { automations }).item.id;
     if (next !== null) this.outline.move(created, { parentId, beforeId: next });
     this.items.update(row.id, field === 'title' ? { title: head } : { body: head });
     return { label: 'Split note', focusId: created, undoFocusId: row.id, created };
@@ -349,12 +349,12 @@ export class EditorService {
     for (const { id, current, target } of plan) this.write(id, current, target, direction, row.id);
     for (const { id, current, target } of plan) {
       if (target.parentId === null || target.parentId === current.parentId) continue;
-      const parent = this.ctx.get<{ type: string; secret: number | null }>(
-        `SELECT type, json_extract(metadata, '$.secret') AS secret FROM items WHERE id = ?`, target.parentId,
+      const parent = this.ctx.get<{ type: string; archived_at: string | null; secret: number | null }>(
+        `SELECT type, archived_at, json_extract(metadata, '$.secret') AS secret FROM items WHERE id = ?`, target.parentId,
       );
       const top = pathToRoot(this.ctx, id).at(-1)!;
       const detached = this.placement(top).parent_id !== null;
-      if (!parent || parent.type === 'decision' || (parent.secret && !target.secret) || detached) {
+      if (!parent || parent.archived_at !== null || parent.type === 'decision' || (parent.secret && !target.secret) || detached) {
         throw new MemoryError('conflict', `“${row.label}” can’t be ${direction === 'undo' ? 'undone' : 'redone'}: `
           + 'an item’s earlier place in the outline no longer exists. Move it by hand instead.');
       }

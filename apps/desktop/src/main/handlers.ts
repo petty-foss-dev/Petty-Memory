@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join } from 'node:path';
-import { AiError, PROVIDERS, type ProviderId, ask, createProvider, enrichItem, isProviderId, proposeEdit } from '@enve-memory/ai';
+import { AiError, PROVIDERS, type ProviderId, ask, chat, createProvider, enrichItem, isProviderId, proposeEdit } from '@enve-memory/ai';
 import { lanUrls, pairingLink } from '@enve-memory/api';
 import { localEmbeddingsSupported } from '@enve-memory/embeddings';
 import { type Item, type ItemFilter, MAX_SEALED_FILE_BYTES, MemoryError, SEALED_FILE_MIME, SEALED_FILE_NAME, pageCursor } from '@enve-memory/core';
@@ -310,6 +310,8 @@ export function createHandlers(ctx: HandlerContext): Handlers {
       proposeEdit(memory(), requireProvider(), { rootId: str(rootId, 'Item'), instruction: str(instruction, 'Instruction') }),
     'edits.apply': (proposal) => memory().edits.apply(proposal),
     'edits.undo': (receipt) => memory().edits.undo(receipt),
+    'organizer.apply': (proposal, includeIds) => memory().organizer.apply(proposal, includeIds),
+    'organizer.undo': (receipt) => memory().organizer.undo(receipt),
 
     'vault.state': () => memory().vault.state(),
     'vault.setup': (passphrase) => memory().vault.setup(str(passphrase, 'Passphrase')),
@@ -524,6 +526,7 @@ export function createHandlers(ctx: HandlerContext): Handlers {
       return aiStatus();
     },
     'ai.ask': (question, project) => ask(memory(), requireProvider(), str(question, 'Question'), project ? { project } : {}),
+    'ai.chat': (request) => chat(memory(), requireProvider(), request),
 
     'clients.list': () => memory().clients.list(),
     'clients.create': (name, scopes) => memory().clients.create(name, scopes),

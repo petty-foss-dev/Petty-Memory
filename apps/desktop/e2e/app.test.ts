@@ -444,7 +444,7 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
     assert.equal((await fetch(`${status.value.url}/api/v1/status`)).status, 200);
   });
 
-  test('asks the library with a real model (set ENVE_E2E_OLLAMA to run)', { skip: !process.env.ENVE_E2E_OLLAMA }, async () => {
+  test('chats with the library using a real model (set ENVE_E2E_OLLAMA to run)', { skip: !process.env.ENVE_E2E_OLLAMA }, async () => {
     await settings('AI');
     await page.getByLabel('Provider').selectOption('ollama');
     await page.getByLabel(/Server address/).fill(process.env.ENVE_E2E_OLLAMA!);
@@ -454,14 +454,19 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
     await page.getByRole('button', { name: 'Test' }).click();
     await page.getByText(/^Replied:/).waitFor({ timeout: 90_000 });
 
-    await nav('Ask');
-    await page.getByLabel('Question').fill('How do rolling codes stop a replay attack?');
-    await page.locator('form.ask-form').getByRole('button', { name: 'Ask' }).click();
-    await page.locator('.answer .cite').first().waitFor({ timeout: 120_000 });
+    await nav('AI chat');
+    await page.getByLabel('Message').fill('How do rolling codes stop a replay attack?');
+    await page.locator('form.ask-form').getByRole('button', { name: 'Send' }).click();
+    await page.locator('.chat-turn.assistant .answer .cite').first().waitFor({ timeout: 120_000 });
     await shot('ask-dark');
-    await page.locator('.answer .cite').first().click();
+    await page.locator('.chat-turn.assistant .answer .cite').first().click();
     await page.getByRole('dialog', { name: /details/ }).waitFor();
     await page.keyboard.press('Escape');
+
+    await page.getByLabel('Message').fill('What does the receiver do with a replayed code?');
+    await page.getByLabel('Message').press('Enter');
+    await page.locator('.chat-turn.assistant').nth(1).waitFor({ timeout: 120_000 });
+    assert.equal(await page.locator('.chat-turn.user').count(), 2);
   });
 
   test('automations tag and file new items', async () => {

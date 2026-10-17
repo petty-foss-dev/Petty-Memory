@@ -421,46 +421,10 @@ export function createDetail(ctx) {
         clear(out, errorBox(error));
       }
     };
-    const renderProposal = (proposal) => {
-      const selected = new Set(proposal.operations.map((_, index) => index));
-      const apply = h('button', { type: 'button', class: 'btn primary', onClick: async () => {
-        apply.disabled = true;
-        try {
-          const { applied, undo } = await post('/ai/apply', { proposal: { ...proposal, operations: proposal.operations.filter((_, index) => selected.has(index)) } });
-          clear(out, h('p', { class: 'ok' }, `Applied ${applied} change${applied === 1 ? '' : 's'}.`));
-          ctx.changed();
-          if (undo) {
-            out.append(h('button', { type: 'button', class: 'btn', onClick: async (event) => {
-              event.target.disabled = true;
-              try {
-                const { text, kind } = recovery('AI changes undone as a new history entry', await post('/ai/undo', { receipt: undo }));
-                clear(out, h('p', { class: kind }, text));
-                ctx.changed();
-              } catch (error) { out.append(errorBox(error)); }
-            } }, 'Undo these changes'));
-          }
-        } catch (error) {
-          out.append(errorBox(error));
-          apply.disabled = selected.size === 0;
-        }
-      } }, 'Apply selected');
-      clear(out,
-        h('h3', null, 'Proposal'),
-        h('p', null, proposal.summary || 'No summary.'),
-        proposal.operations.length
-          ? h('ol', { class: 'ops' }, proposal.operations.map((operation, index) => {
-            const row = operationView(operation);
-            row.prepend(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, 'aria-label': `Include change ${index + 1}`, onChange: (event) => {
-              if (event.target.checked) selected.add(index); else selected.delete(index);
-              apply.disabled = selected.size === 0;
-            } }), 'Include this change'));
-            return row;
-          }))
-          : empty('The model proposed no changes.'),
-        h('div', { class: 'actions' },
-          proposal.operations.length ? apply : null,
-          h('button', { type: 'button', class: 'btn', onClick: () => { clear(out); state.interacting = false; } }, 'Discard')));
-    };
+    const renderProposal = (proposal) => showProposal(out, proposal, {
+      changed: () => ctx.changed(),
+      onDiscard: () => { clear(out); state.interacting = false; },
+    });
     return h('section', { class: 'panel' },
       h('h2', null, 'Edit with AI'),
       h('p', { class: 'hint' }, 'Proposes changes to this item and everything inside it. Nothing changes until you apply.'),
@@ -471,6 +435,48 @@ export function createDetail(ctx) {
   }
 
   return { el, open, close, refresh, isDirty: () => Boolean(current?.dirty), currentId: () => current?.id ?? null };
+}
+
+/** Shows an AI proposal in `out` with a checkbox per change, applies only the ticked ones, then offers the guarded undo. */
+export function showProposal(out, proposal, { changed, onDiscard }) {
+  const selected = new Set(proposal.operations.map((_, index) => index));
+  const apply = h('button', { type: 'button', class: 'btn primary', onClick: async () => {
+    apply.disabled = true;
+    try {
+      const { applied, undo } = await post('/ai/apply', { proposal: { ...proposal, operations: proposal.operations.filter((_, index) => selected.has(index)) } });
+      clear(out, h('p', { class: 'ok' }, `Applied ${applied} change${applied === 1 ? '' : 's'}.`));
+      changed();
+      if (undo) {
+        out.append(h('button', { type: 'button', class: 'btn', onClick: async (event) => {
+          event.target.disabled = true;
+          try {
+            const { text, kind } = recovery('AI changes undone as a new history entry', await post('/ai/undo', { receipt: undo }));
+            clear(out, h('p', { class: kind }, text));
+            changed();
+          } catch (error) { out.append(errorBox(error)); }
+        } }, 'Undo these changes'));
+      }
+    } catch (error) {
+      out.append(errorBox(error));
+      apply.disabled = selected.size === 0;
+    }
+  } }, 'Apply selected');
+  clear(out,
+    h('h3', null, 'Proposal'),
+    h('p', null, proposal.summary || 'No summary.'),
+    proposal.operations.length
+      ? h('ol', { class: 'ops' }, proposal.operations.map((operation, index) => {
+        const row = operationView(operation);
+        row.prepend(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, 'aria-label': `Include change ${index + 1}`, onChange: (event) => {
+          if (event.target.checked) selected.add(index); else selected.delete(index);
+          apply.disabled = selected.size === 0;
+        } }), 'Include this change'));
+        return row;
+      }))
+      : empty('The model proposed no changes.'),
+    h('div', { class: 'actions' },
+      proposal.operations.length ? apply : null,
+      h('button', { type: 'button', class: 'btn', onClick: onDiscard }, 'Discard')));
 }
 
 function safeUrl(raw) {

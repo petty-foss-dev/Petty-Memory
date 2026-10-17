@@ -15,6 +15,9 @@ export { DEFAULT_PRESENTATION } from './presentation.ts';
 export { REFERENCE_PATTERN, referencedIds } from './references.ts';
 export type { EditScope, EditScopeNode, EditUndoReceipt } from './edits.ts';
 export type { EditorService } from './editor.ts';
+export type {
+  OrganizationCandidate, OrganizationPlan, OrganizationProposal, OrganizationReceipt, OrganizationResult, OrganizationScope, OrganizerService,
+} from './organizer.ts';
 export type { FeedService } from './feed.ts';
 export type { SavedView, SavedViewFilter, SavedViewInput, TemplateService, TemplateUseInput, ViewPage, ViewService } from './workflows.ts';
 export { MAX_SEALED_FILE_BYTES, SEALED_FILE_MIME, SEALED_FILE_NAME, SECRET_LABEL, isSealedItem } from './vault.ts';

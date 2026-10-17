@@ -74,7 +74,7 @@ struct ItemDetailView: View {
     private func sheetContent(_ kind: ItemSheet.Kind, item: Item) -> some View {
         switch kind {
         case .edit: ItemEditor(item: item)
-        case .ai: AIEditSheet(item: item)
+        case .ai: AIEditSheet(rootID: item.id)
         case .share: ShareLinkSheet(item: item)
         case .saveTemplate: SaveAsTemplateSheet(item: item)
         case .useTemplate: TemplateUseSheet(template: item) { router.open(.item($0.id)) }

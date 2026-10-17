@@ -131,7 +131,9 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
         return await mcpNode(req, res);
       }
 
-      const rawKey = req.method === 'GET' || req.method === 'HEAD' ? undefined : idempotencyKeyOf(req);
+      // Chat previews never write library data; persisting their replies would retain session conversations.
+      const transientChat = req.method === 'POST' && url.pathname === '/api/v1/ai/chat';
+      const rawKey = req.method === 'GET' || req.method === 'HEAD' || transientChat ? undefined : idempotencyKeyOf(req);
       // Bound to the method and path, so one key can't replay a different endpoint's answer.
       const idempotencyKey = rawKey && `${req.method} ${url.pathname} ${rawKey}`;
       // A client retrying after a lost response gets the original answer instead of a second copy.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AI chat on desktop, browser and iPhone: cited follow-ups, selected-branch edit proposals and natural-language library organization with reviewed placements and guarded undo.
+- Voice-to-draft input through native iPhone speech recognition and the Web Speech API where available, with system dictation guidance elsewhere. Sending and applying remain explicit.
 - Saved views: reusable keyword searches with combined project, type, tag, task-status, shelf and attention filters, dynamic results and cursor paging.
 - Note/checklist templates: atomic tree copies with fresh identities, remapped internal references, reset completion and optional date/project placeholders.
 - Workflow management in desktop, browser and iPhone, with CLI and scoped MCP access. Definitions travel with ordinary library history, exports and sync; iPhone writes require a connection.

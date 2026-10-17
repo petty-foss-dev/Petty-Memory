@@ -1,5 +1,6 @@
 import { can, connect, currentClient, disconnect, enc, get, onSessionLost, post, query } from './api.js';
 import { clear, confirmDialog, empty, errorBox, field, h, loading, when } from './dom.js';
+import { createChatView } from './chat.js';
 import { createDetail } from './detail.js';
 import { clearEditHistory, isEditable, redoEdit, undoEdit } from './edits.js';
 import { createOutline } from './outline.js';
@@ -15,6 +16,7 @@ const MAX_PAGE = 200;
 const VIEWS = [
   ['outline', 'Outline'],
   ['search', 'Search'],
+  ['chat', 'AI chat'],
   ['highlights', 'Highlights'],
   ['views', 'Saved views'],
   ['templates', 'Templates'],
@@ -151,6 +153,7 @@ function showShell(root) {
   const views = {
     outline: { el: outline.el, refresh: () => outline.refresh() },
     search: createSearchView(ctx),
+    chat: createChatView(ctx),
     highlights: createHighlightsView(ctx),
     views: createViewsView(ctx),
     templates: createTemplatesView(ctx),
@@ -180,6 +183,7 @@ function showShell(root) {
     nav, banner, main, detail.el, status);
 
   function show(key) {
+    if (key !== view) views[view].leave?.();
     view = key;
     navButtons.forEach((b, i) => {
       if (VIEWS[i][0] === key) b.setAttribute('aria-current', 'page');
@@ -259,6 +263,7 @@ function showShell(root) {
   document.addEventListener('visibilitychange', visibility);
   start();
   stopPolling = () => {
+    views.chat.dispose();
     lifetime.abort();
     active?.abort();
     clearTimeout(toastTimer);

@@ -50,6 +50,7 @@ enum Route: Hashable {
     case savedViews
     case savedView(String)
     case templates
+    case aiChat
 }
 
 enum CaptureKind: String, CaseIterable, Identifiable {

@@ -26,6 +26,7 @@ One `items` table holds every type: `note`, `bookmark`, `task`, `decision`, `fil
 | `api_clients` | HTTP clients: name, SHA-256 of the token, scopes, last used, revoked. Not user content, so it's never logged or synced. |
 | `idempotency` | Stored responses to API writes that carried an `Idempotency-Key`, per client, so a retry after a lost response gets the original answer. |
 | `item_versions` | Immutable item states (`state` JSON, null for deleted), one per user-visible change, local or synced, with `actor`, `op`, `parent_id` and `snapshot_seq` for rebuilding a subtree at that point. Built by each device from the changes it applies, so not synced. Upgraded libraries get one `baseline` version per item holding the state at upgrade; earlier states aren't invented. |
+| `editor_actions` | Local atomic editor journals, with an action id, command hash, captured before/after states, created ids and undo state. Organization uses the same journal; structural creates can explicitly skip capture rules, and that option is part of their action hash. |
 | `public_shares` | Public read-only links: `root_id`, SHA-256 of the token, `excluded_ids`, `expires_at`, `revoked_at`. Configuration, so not logged or synced. |
 | `items_fts` | FTS5 external-content index over `title`, `body`, `url` and `content`, kept in sync by triggers. bm25 weights 10 / 1.5 / 2 / 1. |
 
@@ -81,3 +82,9 @@ Inline references are stored in body text as `[[item:<UUID>|label]]`; backlinks 
 ## Derived data
 
 `chunks` (item, model, ordinal, text, float32 vector) and `embedded_items` (which items are current for which model) are rebuildable from `items`. They aren't in the change log and are never synced. The `items_embedding_stale` trigger deletes an item's `embedded_items` row whenever its title, body or content changes.
+
+## Organization and chat
+
+Applying a library organization records its result and original undo receipt in the destination's `subtree` change (`data.organization`), in the same transaction as its editor action. Retries return that immutable receipt; they never hash newer work into a fresh undo authorization. Undo checks both the recorded receipt and the current destination tree. Source-parent validity is checked by the editor before restoring placements. Opening an item and reminder delivery are bookkeeping and do not invalidate the organization hash.
+
+Chat messages and model replies have no library table or server response cache. `/ai/chat` bypasses idempotency storage; reviewed Apply and Undo use the ordinary replay cache. Applied headings, placements and their history remain normal library content. No migration is needed for the organizer.

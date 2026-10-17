@@ -6,7 +6,7 @@ const PAGE = 30;
 /** The server's largest page; search ranks at most this many. */
 const MAX_PAGE = 200;
 
-export function pickItem({ title, exclude = new Set(), extras = [] }) {
+export function pickItem({ title, exclude = new Set(), extras = [], filter = {} }) {
   return new Promise((resolve) => {
     const opener = document.activeElement;
     const results = h('ul', { class: 'picker-results', role: 'listbox', 'aria-label': 'Matching items' });
@@ -44,14 +44,14 @@ export function pickItem({ title, exclude = new Set(), extras = [] }) {
         let next = false;
         if (q) {
           if (!more) want = PAGE;
-          hits = await get(`/search${query({ q, limit: want })}`);
+          hits = await get(`/search${query({ q, ...filter, limit: want })}`);
           next = hits.length === want && want < MAX_PAGE;
         } else {
           if (!more) {
             recent = [];
             cursor = undefined;
           }
-          const page = (await get(`/items${query({ limit: PAGE, before: cursor })}`)).map((item) => ({ ...item, preview: item.body }));
+          const page = (await get(`/items${query({ ...filter, limit: PAGE, before: cursor })}`)).map((item) => ({ ...item, preview: item.body }));
           recent = recent.concat(page);
           const last = page.at(-1);
           cursor = last ? `${last.updatedAt},${last.id}` : cursor;

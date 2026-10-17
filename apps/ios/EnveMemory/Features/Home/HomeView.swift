@@ -99,7 +99,7 @@ struct HomeView: View {
     }
 }
 
-/// The outline, saved views and templates, plus the vault and public links when this phone may use them.
+/// The outline, saved views, templates and AI chat, plus the vault and public links when this phone may use them.
 private struct LibraryShortcuts: View {
     @Environment(Router.self) private var router
     @Environment(Connection.self) private var connection
@@ -112,6 +112,8 @@ private struct LibraryShortcuts: View {
                 .accessibilityIdentifier("OpenSavedViews")
             FilterChip(title: "Templates", systemImage: "doc.on.doc", isSelected: false) { router.open(.templates) }
                 .accessibilityIdentifier("OpenTemplates")
+            FilterChip(title: "AI chat", systemImage: "bubble.left.and.text.bubble.right", isSelected: false) { router.open(.aiChat) }
+                .accessibilityIdentifier("OpenAIChat")
             if connection.canUseVault {
                 FilterChip(title: "Vault", systemImage: "lock", isSelected: false) { router.open(.vault) }
                     .accessibilityIdentifier("OpenVault")

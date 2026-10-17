@@ -34,6 +34,7 @@
 - **Shelves and reminders.** Pinned, Read, Watch, Buy, Revisit, "unopened for a month". Reminders take plain words ("tomorrow", "friday") and notify on the desktop, the phone or in the browser.
 - **Saved views.** Name a recurring search such as "Open Garage tasks" or "Security articles to read". Combine keywords, project, type, tag, task status and attention filters; the results follow the current library. Available on desktop, web, iPhone, CLI and MCP.
 - **Reusable templates.** Turn an ordinary note/checklist tree into an editable template, then create fresh copies for meeting notes, research briefs or recurring checklists. Copies keep nesting and references, reset completed boxes and expand `{{date}}` and `{{project}}`. [Examples and limits](docs/WORKFLOWS.md).
+- **Chat with your library.** Ask questions with source links, discuss follow-ups, or say “organize all notes about gardening into a PARA system.” Review the proposed hierarchy and note placements, keep the branches you want, apply them together and undo safely. Dictate into the draft on iPhone and supporting browsers, with system dictation available on desktop. [Chat and voice guide](docs/AI_CHAT.md).
 - **Optional AI, bring your own.** Ollama, OpenAI, Anthropic, Gemini, OpenRouter or any OpenAI-compatible server for summaries, tag and project suggestions (or automatic filing), and cited answers from your own library. Everything else works with AI off.
 - **Automations.** For example, "links from github.com → #code, file into Development".
 - **Sync between your computers** through a folder you already sync (iCloud Drive, Dropbox, Syncthing), with optional passphrase encryption, or through a Petty Memory server you run yourself. Server sync watches local changes and long-polls for incoming work; folder sync runs periodically. Conflicting text is retained for review.
@@ -48,12 +49,12 @@ This work began as a public challenge to build an open-source alternative to [Da
 |---|---|
 | Nested items | Ordered, paged outlines; move, indent and outdent whole branches while keeping stable item identities. |
 | Automatic formatting | A formatted editor with toolbar controls, semantic headings and checklists, plus optional Markdown source. Existing Markdown stays intact. |
-| Automatic organization | Opt-in background organization and AI proposals to regroup or sort a selected branch, with reviewable history. |
+| Automatic organization | Opt-in background organization, selected-branch proposals and natural-language topic organization across the library, with review, selective acceptance and guarded undo. |
 | Attention levels | Raise or lower an item's visual emphasis without changing its content or filing. |
 | Checklists | Nested completion and progress, completed-item visibility and quick reset. |
 | Connections | Create and remove relations between items; browse related items, backlinks and the desktop graph. |
 | Item history | Automatic item/subtree snapshots, comparisons and restore as a new change; historical attachment bytes are retained. |
-| AI assistance | Scoped editing and grouping, selective acceptance, guarded undo, suggestions and answers with citations. Bring your own provider or keep AI off. |
+| AI assistance | Session chat, dictated prompts, cited answers, scoped editing and topic-wide grouping with selective acceptance and guarded undo. Bring your own provider or keep AI off. |
 | Inline references | Insert references to stable item identities from the editor and navigate to the referenced item. |
 | Hybrid encryption / secrets | Optional encrypted notes, nested secret branches and encrypted attachments, with locking, recovery kits and scoped device access. See the encryption differences below. |
 | Selective sharing | Read-only public subtree links with excluded branches, expiry and revocation. Secrets are excluded. |
@@ -82,6 +83,20 @@ Desktop and browser evaluate views locally on their library host. iPhone can dis
 | Saved view | Note created from a template |
 |---|---|
 | ![Saved keyword view with current results](docs/screenshots/workflows/browser-views.png) | ![Template copy with its date expanded](docs/screenshots/workflows/browser-template.png) |
+
+## Chat and organize notes
+
+In **AI chat → Organize library** (Organize on iPhone), type or dictate:
+
+> Organize all notes about gardening into a PARA system.
+
+Memory finds matching notes across projects and proposes a destination, headings and placements. Review the tree, untick anything that does not belong, then move the selection together. Note contents, files, identities and project filing stay intact. Undo protects newer work. Questions and follow-ups have source links; Change notes proposes edits to a branch you choose. [The guide](docs/AI_CHAT.md) explains keyword matching, size limits, sessions and provider privacy.
+
+Dictation fills the draft and never sends or applies automatically. iPhone uses native speech recognition; supporting browsers use Web Speech. Desktop offers system dictation guidance when in-app speech is unavailable. Live microphone acceptance still needs a physical-device run.
+
+| Desktop organization review | iPhone organization review |
+|---|---|
+| ![Selective organization with preserved child notes](docs/screenshots/chat/desktop-organize-review.png) | <img src="docs/screenshots/chat/iphone-organize-review.png" width="260" alt="Native iPhone organization review with one note excluded"> |
 
 ## Screenshots
 

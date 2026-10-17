@@ -1989,6 +1989,153 @@ input.item-heading:hover {
   gap: 8px;
 }
 
+.chat-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.chat-scope .button {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat > .chips {
+  margin: 4px 0 16px;
+}
+
+.chat-notice {
+  color: var(--text-2);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+.chat-log {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-turn {
+  max-width: var(--reading);
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.chat-turn.user {
+  align-self: flex-end;
+  background: var(--ember-soft);
+  border-color: var(--ember-line);
+}
+
+.chat-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-proposal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chat-proposal p {
+  margin: 0;
+}
+
+.chat-actions .primary {
+  margin-left: auto;
+}
+
+.button.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.recording-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: recording-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.chat-interim {
+  margin: 0;
+  font-style: italic;
+}
+
+.organize-root {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin: 12px 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.organize-tree {
+  list-style: none;
+  margin: 4px 0 0;
+  padding-left: 22px;
+}
+
+.organize-tree li {
+  margin: 4px 0;
+}
+
+.organize-tree .check {
+  display: flex;
+  align-items: flex-start;
+  color: inherit;
+}
+
+.organize-tree .check > input {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.organize-tree .check > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.organize-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
 /* Activity */
 
 .activity {

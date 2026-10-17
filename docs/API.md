@@ -20,7 +20,7 @@ Browser origins are restricted. Extension origins (`chrome-extension:`, `moz-ext
 
 Errors are `{"error": {"code", "message"}}` with the status: `401 unauthorized`, `403 insufficient_scope | forbidden_origin | forbidden_host`, `400 invalid | invalid_json`, `404 not_found`, `409 conflict | in_progress`, `413 too_large`, `423 locked`.
 
-**Safe retries:** send `Idempotency-Key: <1–128 chars>` on any write. Repeating a key within 24 hours (per client) returns the original response with `Idempotent-Replayed: true` instead of writing again. The exception is `POST /shares`: its public token is returned only once, so a replay gets `409 conflict` instead of the token. If that response was lost, revoke the share and create a new one.
+**Safe retries:** send `Idempotency-Key: <1–128 chars>` on any write. Repeating a key within 24 hours (per client) returns the original response with `Idempotent-Replayed: true` instead of writing again. `POST /shares` returns its public token only once, so a replay gets `409 conflict`; if that response was lost, revoke the share and create a new one. `POST /ai/chat` is a read-only preview that bypasses this replay cache so session conversations are not retained. Retrying a chat invokes the provider again.
 
 ## Endpoints (prefix `/api/v1`)
 
@@ -95,6 +95,19 @@ Errors are `{"error": {"code", "message"}}` with the status: `401 unauthorized`,
 | `POST` / `DELETE /items/:id/relations` | write | `{toId, kind}`; DELETE removes a connection (logged and synced, not an item delete) |
 
 Completion has one authority per item: a task's status for tasks (checking sets it to `done`, unchecking to `open`), `presentation.checked` for other ordinary items. Decisions and archived items take no part. Libraries upgraded from before history start with one `baseline` version holding the state at upgrade; earlier states aren't invented.
+
+### AI chat and organization
+
+| Method & path | Scope | Notes |
+|---|---|---|
+| `GET /ai/status` | read | `{configured, provider, label, model, cloud}`; no keys |
+| `POST /ai/chat` | read, plus write for edit/organize | `{mode: ask\|edit\|organize, messages: [{role: user\|assistant, content}], project?, rootId?}` → `{kind: answer, answer}` / `{kind: proposal, proposal}` / `{kind: organization, proposal}` |
+| `POST /ai/organize/apply` | write | `{proposal, includeIds?}` → `{rootId, moved, actionId, undo}`; one atomic editor action |
+| `POST /ai/organize/undo` | write | `{receipt}` → editor action result; refused after newer destination changes |
+
+Messages alternate from user to assistant and end with the user; no system/tool roles. Maximum 12 messages, 4,000 UTF-16 units per message and 16,000 total. Chat is transient, has no server conversation identifier and never applies changes. Edit requires an explicit ordinary `rootId`. Organize extracts a keyword topic and requested system, discovers matching ordinary notes across projects, and returns a proposal or a clarification answer. The [chat guide](AI_CHAT.md) explains exclusions, limits, review and dictation.
+
+Organization proposals carry a hash of the original match set, affected branches and destination. The host validates the whole proposal again when applying it; new matches and source changes cause `409 conflict`. Omitting `includeIds` selects all candidates; an empty selection is invalid. Applying keeps content, identities, project filing and carried children. Undo receipts bind the journalled action to the resulting destination tree so newer work cannot be displaced.
 
 ### AI edits
 

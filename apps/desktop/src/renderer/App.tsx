@@ -9,7 +9,6 @@ import { Activity } from './views/Activity.tsx';
 import { RemindersView } from './views/Reminders.tsx';
 import { SHELF_COPY, ShelfView } from './views/Shelf.tsx';
 import { GraphView } from './views/Graph.tsx';
-import { Ask } from './views/Ask.tsx';
 import { Highlights } from './views/Highlights.tsx';
 import { Home } from './views/Home.tsx';
 import { Inbox } from './views/Inbox.tsx';
@@ -22,6 +21,7 @@ import { SearchPalette } from './views/Search.tsx';
 import { Settings } from './views/Settings.tsx';
 import { Tasks } from './views/Tasks.tsx';
 
+const Ask = lazy(() => import('./views/Ask.tsx').then((module) => ({ default: module.Ask })));
 const SavedViews = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.SavedViews })));
 const Templates = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.Templates })));
 
@@ -185,7 +185,7 @@ export function App() {
             {nav({ view: 'home' }, 'home', 'Home')}
             {nav({ view: 'inbox' }, 'inbox', 'Inbox', info.data?.inboxCount)}
             {nav({ view: 'tasks' }, 'tasks', 'Tasks')}
-            {info.data?.aiEnabled && nav({ view: 'ask' }, 'ask', 'Ask')}
+            {nav({ view: 'ask' }, 'ask', 'AI chat')}
             <div className="nav-heading">
               <span>Projects</span>
               <button className="icon-button" aria-label="New project" title="New project" onClick={() => setCreatingProject(true)}>
@@ -219,12 +219,12 @@ export function App() {
           {route.view === 'highlights' && <Highlights />}
           {route.view === 'project' && <ProjectView key={route.id} id={route.id} supersede={route.supersede} />}
           {route.view === 'tasks' && <Tasks />}
-          {route.view === 'ask' && <Ask />}
           {route.view === 'activity' && <Activity />}
           {route.view === 'graph' && <GraphView />}
           {route.view === 'shelf' && <ShelfView shelf={route.shelf} />}
           {route.view === 'reminders' && <RemindersView />}
           <Suspense fallback={<div className="page" role="status">Loading…</div>}>
+            {route.view === 'ask' && <Ask />}
             {route.view === 'views' && <SavedViews id={route.id} />}
             {route.view === 'templates' && <Templates />}
           </Suspense>

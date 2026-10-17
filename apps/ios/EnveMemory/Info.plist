@@ -48,6 +48,10 @@
 	<string>Scan the pairing QR code shown by Petty Memory on your computer.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Petty Memory connects to the library on your computer over your home network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>When you tap Dictate in AI chat, Petty Memory listens so it can type what you say. Petty Memory doesn't save audio.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Dictate in AI chat turns your speech into text in the message box. Where your iPhone can't do this on its own, Apple's speech service does.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

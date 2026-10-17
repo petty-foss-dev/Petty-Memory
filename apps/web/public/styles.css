@@ -264,3 +264,26 @@ progress { accent-color: var(--ember); width: 160px; }
 .vault-recover { margin-top: 12px; }
 .vault-recover summary { cursor: pointer; color: var(--ember-text); }
 .recovery-code { display: block; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); font-family: var(--font-mono); overflow-wrap: anywhere; user-select: all; }
+.chat [hidden] { display: none !important; }
+.chat-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; }
+.chat-mode { display: flex; gap: 14px; align-items: center; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 2px 12px; margin: 0; }
+.chat-mode legend { padding: 0 4px; font-size: 0.8rem; color: var(--text-2); }
+.chat-mode .check { margin: 0; }
+.chat-notice { color: var(--text-2); font-size: 0.9rem; padding: 8px 12px; border-radius: var(--r-sm); background: var(--surface-2); }
+.chat-log { list-style: none; margin: 10px 0 16px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.chat-turn { max-width: 70ch; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.chat-turn.user { align-self: flex-end; background: var(--ember-soft); }
+.chat-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat .answer-text { font-family: var(--font-display); font-size: 1.02rem; line-height: 1.6; }
+.chat .answer-text p { margin: 0 0 0.6em; }
+.chat .sources { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid var(--border); }
+.chat-form { margin-top: 8px; }
+.btn.recording { border-color: var(--danger); color: var(--danger); }
+.recording-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; color: var(--text-2); }
+.recording-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: recording-pulse 1.2s ease-in-out infinite; }
+@keyframes recording-pulse { 50% { opacity: 0.35; } }
+.chat-interim { font-style: italic; }
+.organize-root { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 12px; margin: 8px 0; }
+.organize-tree { list-style: none; margin: 4px 0 0; padding-left: var(--step); }
+.organize-tree li { margin: 4px 0; }
+.organize-tree .check { margin: 0; }

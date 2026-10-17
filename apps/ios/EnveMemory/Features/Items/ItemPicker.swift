@@ -10,6 +10,7 @@ struct ItemPicker: View {
 
     let title: String
     var excluding: Set<String> = []
+    var type: ItemType?
     let onPick: (Choice) -> Void
 
     @Environment(Connection.self) private var connection
@@ -94,13 +95,13 @@ struct ItemPicker: View {
     /// Recent items follow the `before` cursor; search has no offset, so a longer list asks again for more results.
     private func fetch() async throws {
         if text.isEmpty {
-            let items = try await connection.load(.items(ItemFilter(limit: Self.pageSize, before: cursor)), as: [Item].self).value
+            let items = try await connection.load(.items(ItemFilter(type: type, limit: Self.pageSize, before: cursor)), as: [Item].self).value
             let seen = Set(choices.map(\.id))
             choices += items.filter { !$0.isSecret && !seen.contains($0.id) }.map { Choice(id: $0.id, title: $0.displayTitle) }
             cursor = items.last?.pageCursor
             hasMore = items.count == Self.pageSize
         } else {
-            let hits = try await connection.load(.search(text, filter: ItemFilter(limit: limit)), as: [SearchHit].self).value
+            let hits = try await connection.load(.search(text, filter: ItemFilter(type: type, limit: limit)), as: [SearchHit].self).value
             choices = hits.map { Choice(id: $0.id, title: $0.title.isEmpty ? ($0.preview ?? $0.type.label) : $0.title) }
             hasMore = hits.count == limit && limit < Self.searchCap
         }
