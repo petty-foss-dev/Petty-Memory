@@ -10,6 +10,15 @@
 </p>
 
 <p align="center">
+  Built-in AI chat answers questions, edits notes and organizes topics across your library. Review changes before applying them, with selective acceptance and undo.<br>
+  <a href="docs/AI_CHAT.md">AI chat, organization and dictation guide</a>
+</p>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/envebookplayer"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=000000" alt="Support development on Buy Me a Coffee"></a>
+</p>
+
+<p align="center">
   <a href="LICENSE.md"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-0f7a8a"></a>
   <img alt="Local-first" src="https://img.shields.io/badge/local--first-no%20account-181d20">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-2026--07--28-181d20">
@@ -85,6 +94,8 @@ Desktop and browser evaluate views locally on their library host. iPhone can dis
 | ![Saved keyword view with current results](docs/screenshots/workflows/browser-views.png) | ![Template copy with its date expanded](docs/screenshots/workflows/browser-template.png) |
 
 ## Chat and organize notes
+
+Configure your provider in desktop **Settings → AI**, or with `petty-memory ai use` on a self-hosted server. Your phone and browser use that host's provider.
 
 In **AI chat → Organize library** (Organize on iPhone), type or dictate:
 
