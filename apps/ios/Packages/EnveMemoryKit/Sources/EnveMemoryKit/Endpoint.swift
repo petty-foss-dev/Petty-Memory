@@ -155,8 +155,12 @@ public enum Shelf: Hashable, Sendable, Identifiable {
     case intent(Intent)
     case unopened(days: Int)
     case reminders
+    case review
+    case attention(ItemPresentation.Attention)
 
     public static let all: [Shelf] = [.pinned, .intent(.read), .intent(.watch), .intent(.buy), .intent(.revisit), .unopened(days: 30), .reminders]
+    /// What deserves a look: marked for review, high attention, and the existing revisit and unopened signals.
+    public static let suggestions: [Shelf] = [.review, .attention(.high), .intent(.revisit), .unopened(days: 30)]
 
     public var id: String {
         switch self {
@@ -164,6 +168,8 @@ public enum Shelf: Hashable, Sendable, Identifiable {
         case .intent(let intent): "intent-\(intent.rawValue)"
         case .unopened(let days): "unopened-\(days)"
         case .reminders: "reminders"
+        case .review: "review"
+        case .attention(let level): "attention-\(level.rawValue)"
         }
     }
 
@@ -173,6 +179,8 @@ public enum Shelf: Hashable, Sendable, Identifiable {
         case .intent(let intent): [("intent", intent.rawValue)]
         case .unopened(let days): [("unopened", String(days))]
         case .reminders: [("reminders", "true")]
+        case .review: [("review", "true")]
+        case .attention(let level): [("attention", level.rawValue)]
         }
     }
 }

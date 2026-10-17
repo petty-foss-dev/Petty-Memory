@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_PORT } from '@enve-memory/api';
@@ -13,6 +13,7 @@ import { dispatch } from './dispatch.ts';
 import { createHandlers } from './handlers.ts';
 import { Library } from './library.ts';
 import { PrefsFile } from './prefs.ts';
+import { REMOTE_TOKEN } from './remote.ts';
 import { SecretStore } from './secrets.ts';
 import { displayTitle } from '../shared/text.ts';
 
@@ -61,7 +62,7 @@ const webPreferences = () => ({
   spellcheck: true,
 });
 
-const background = () => (nativeTheme.shouldUseDarkColors ? '#16120f' : '#f7f1e6');
+const background = () => (nativeTheme.shouldUseDarkColors ? '#0e1113' : '#f3f5f6');
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -270,12 +271,25 @@ async function start(): Promise<void> {
     version: app.getVersion(),
     port,
     lan: prefs.get('lan'),
+    // Built and packaged apps carry dist/web; development serves the browser client's sources.
+    webRoot: [join(here, 'web'), resolve(here, '..', '..', 'web', 'public')].find((dir) => existsSync(join(dir, 'index.html'))) ?? null,
     keys: (provider) => {
       try {
         return secrets.get(provider);
       } catch (error) {
         console.error('secrets:', error);
         return undefined;
+      }
+    },
+    remote: () => {
+      const url = prefs.get('remoteUrl');
+      if (!url) return null;
+      try {
+        const token = secrets.get(REMOTE_TOKEN);
+        return token ? { url, token } : null;
+      } catch (error) {
+        console.error('secrets:', error);
+        return null;
       }
     },
     onChanged: broadcastChanged,
@@ -331,6 +345,7 @@ async function start(): Promise<void> {
     if (Date.now() - lastFocusSync < 30_000) return;
     lastFocusSync = Date.now();
     void lib.sync();
+    void lib.remoteSync();
   });
   app.on('activate', showMain);
   app.on('window-all-closed', () => {

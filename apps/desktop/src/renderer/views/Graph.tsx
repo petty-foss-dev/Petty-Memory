@@ -7,13 +7,13 @@ import { Empty } from '../ui.tsx';
 
 const TYPE_COLORS: Record<ItemType, string> = {
   note: '#8fa6bd',
-  bookmark: '#f5921a',
+  bookmark: '#2fa3ad',
   file: '#7fae8e',
   image: '#c58fb4',
   task: '#d4b25a',
-  decision: '#d9775a',
+  decision: '#8f96d8',
 };
-const TAG_COLOR = '#9a8a76';
+const TAG_COLOR = '#8a979e';
 
 interface SimNode extends GraphNode {
   x: number;

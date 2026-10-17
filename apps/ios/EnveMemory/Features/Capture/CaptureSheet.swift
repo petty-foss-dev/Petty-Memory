@@ -78,7 +78,7 @@ struct CaptureSheet: View {
             try? await Task.sleep(for: .milliseconds(450))
             focus = initialKind == .link ? .url : initialKind == .task ? .title : .text
         }
-        .task { try? await projects.load(connection.client) }
+        .task { _ = try? await projects.load(connection) }
     }
 
     @ViewBuilder

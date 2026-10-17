@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { EnveMemory } from '@enve-memory/core';
+import { EnveMemory, SECRET_LABEL } from '@enve-memory/core';
 import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder, parseBookmarksHtml, parseCsv, parseMarkdownNote } from '@enve-memory/importers';
 
 const temp = (label: string) => mkdtempSync(join(tmpdir(), `enve-memory-import-${label}-`));
@@ -12,6 +12,86 @@ const open = (home?: string) => {
   memory.settings.set('fetchLinks', false);
   return memory;
 };
+
+test('encrypted nested notes and attachments survive an export/import without becoming ordinary files', () => {
+  const source = open(temp('sealed-source'));
+  const target = open(temp('sealed-target'));
+  try {
+    const fixture = JSON.parse(readFileSync(new URL('../../core/test/fixtures/vault-closeout-v1.json', import.meta.url), 'utf8'));
+    source.vault.setup(fixture.passphrase);
+    const root = source.vault.create({ title: 'Encrypted folder', body: 'PRIVATE_PARENT_EXPORT_47' });
+    const child = source.vault.create({ title: 'Encrypted child', body: 'PRIVATE_CHILD_EXPORT_47', parentId: root.id });
+    const contents = new TextEncoder().encode('PRIVATE_FILE_EXPORT_47');
+    const attachment = source.vault.attachFile(child.id, { data: contents, filename: 'Private receipt 47.bin', mimeType: 'application/octet-stream' });
+    const destination = join(temp('sealed-export'), 'export');
+    source.exports.write(destination);
+    const metadata = readFileSync(join(destination, 'metadata.json'), 'utf8');
+    assert.equal(metadata.includes('PRIVATE_CHILD_EXPORT_47'), false);
+    assert.equal(metadata.includes('Private receipt 47.bin'), false);
+    const result = importEnveExport(target, destination);
+    assert.deepEqual(result.failed, []);
+    assert.equal(target.items.get(child.id).type, 'note');
+    assert.equal(target.items.get(child.id).metadata.secret, true);
+    assert.equal(target.outline.get(child.id).parentId, root.id);
+    target.vault.setup(fixture.passphrase);
+    assert.equal(target.vault.read(child.id).body, 'PRIVATE_CHILD_EXPORT_47');
+    assert.equal(target.items.get(child.id).attachments[0]!.id, attachment.id);
+    const file = target.vault.readFile(child.id, attachment.id);
+    assert.equal(file.filename, 'Private receipt 47.bin');
+    assert.deepEqual(file.data, contents);
+    assert.equal(importEnveExport(target, destination).created, 0);
+  } finally {
+    source.close();
+    target.close();
+  }
+});
+
+test('a malformed secret note in an export is reported and never written, so a clean library can still set up its vault', () => {
+  const source = open(temp('crafted-source'));
+  const target = open(temp('crafted-target'));
+  const canonical = open(temp('crafted-canonical'));
+  try {
+    source.vault.setup('fictional source passphrase');
+    const secret = source.vault.create({ title: 'Sealed', body: 'PRIVATE_SEALED_48' });
+    const ordinary = source.items.saveNote({ title: 'Ordinary', body: 'kept' });
+    const destination = join(temp('crafted-export'), 'export');
+    source.exports.write(destination);
+    const path = join(destination, 'metadata.json');
+    const exported = JSON.parse(readFileSync(path, 'utf8'));
+    const valid = exported.items.find((i: { id: string }) => i.id === secret.id);
+    const crafted = (id: string, patch: Record<string, unknown>) => ({ ...structuredClone(valid), id, ...patch });
+    const variants = {
+      plaintext: crafted('019a0000-0000-7000-8000-000000000001', { title: 'PLAINTEXT_TITLE_48', body: 'PLAINTEXT_BODY_48' }),
+      content: crafted('019a0000-0000-7000-8000-000000000002', { content: 'PLAINTEXT_CONTENT_48' }),
+      link: crafted('019a0000-0000-7000-8000-000000000003', { url: 'https://example.com/leak' }),
+      envelope: crafted('019a0000-0000-7000-8000-000000000004', { metadata: { secret: true, vault: { ...valid.metadata.vault, kdf: { name: 'scrypt', N: 2, r: 1, p: 1 } } } }),
+      missing: crafted('019a0000-0000-7000-8000-000000000005', { metadata: { secret: true } }),
+      marker: crafted('019a0000-0000-7000-8000-000000000006', { metadata: { secret: 1, vault: { salt: 'junk' } } }),
+      orphanVault: crafted('019a0000-0000-7000-8000-000000000007', { metadata: { vault: valid.metadata.vault } }),
+      task: crafted('019a0000-0000-7000-8000-000000000008', { type: 'task', title: 'PLAINTEXT_TASK_48', body: 'private task' }),
+      decision: crafted('019a0000-0000-7000-8000-000000000009', { type: 'decision', title: 'PLAINTEXT_DECISION_48', body: 'private decision' }),
+    };
+    writeFileSync(path, JSON.stringify({ ...exported, items: [...exported.items.filter((i: { id: string }) => i.id !== secret.id), ...Object.values(variants)] }));
+
+    const result = importEnveExport(target, destination);
+    assert.equal(result.failed.length, Object.keys(variants).length);
+    for (const variant of Object.values(variants)) assert.throws(() => target.items.get(variant.id), /No item/);
+    assert.equal(target.items.get(ordinary.id).body, 'kept');
+    assert.deepEqual(target.vault.setup('fictional target passphrase'), { configured: true, unlocked: true });
+    const created = target.vault.create({ title: 'Fresh', body: 'PRIVATE_FRESH_48' });
+    assert.equal(target.vault.read(created.id).body, 'PRIVATE_FRESH_48');
+
+    writeFileSync(path, JSON.stringify(exported));
+    assert.deepEqual(importEnveExport(canonical, destination).failed, []);
+    const restored = canonical.items.get(secret.id);
+    assert.deepEqual([restored.title, restored.body, restored.content, restored.url], [SECRET_LABEL, '', '', null]);
+    assert.deepEqual(restored.metadata.vault, valid.metadata.vault);
+  } finally {
+    source.close();
+    target.close();
+    canonical.close();
+  }
+});
 
 const BOOKMARKS = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">

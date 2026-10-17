@@ -41,6 +41,12 @@ enum Route: Hashable {
     case item(String)
     case project(String)
     case shelf(Shelf)
+    /// A branch of the outline; nil is the top level.
+    case outline(String?)
+    case history(String)
+    case vault
+    case vaultNote(String)
+    case shares
 }
 
 enum CaptureKind: String, CaseIterable, Identifiable {

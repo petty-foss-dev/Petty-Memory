@@ -26,14 +26,15 @@
 | `packages/embeddings` | `LocalEmbedder` (transformers.js), `attachLocalEmbedder`, and the background `indexWorker`. |
 | `packages/ai` | Optional LLM providers behind one interface, background enrichment (`enrichWorker`) and cited `ask`. |
 | `packages/importers` | Browser bookmark exports (a token scan of the Netscape format), Markdown folders and Obsidian vaults (front matter, inline tags, re-runs skip what's imported), bookmark CSVs, and Enve exports (ids, dates, files, decisions and relations restored). |
-| `packages/api` | Local HTTP server: REST (`/api/v1`) + MCP over Streamable HTTP (`/mcp`), with token auth, scopes and Host/Origin guards. |
+| `packages/api` | Local HTTP server: REST (`/api/v1`) + MCP over Streamable HTTP (`/mcp`), with token auth, scopes and Host/Origin guards; optionally serves a web root and public share pages. Also `RemoteSyncClient`, which syncs a library with another one over this API. |
 | `packages/cli` | The `enve-memory` binary: human and `--json` commands, `mcp` (stdio), `serve` (HTTP), `clients` (tokens) and `connect` (client setup snippets). |
 
 | App | Role |
 |---|---|
 | `apps/desktop` | Electron 44 + React desktop app. Opens the library directly through core, hosts the HTTP API and runs the background workers. See its [README](../apps/desktop/README.md). |
 | `apps/extension` | MV3 browser extension for Chrome, Edge and Firefox; a client of the HTTP API. See its [README](../apps/extension/README.md). |
-| `apps/ios` | SwiftUI app and share extension; a client of the HTTP API over the LAN or Tailscale. See its [README](../apps/ios/README.md). |
+| `apps/ios` | SwiftUI app and share extension; a client of the HTTP API over the LAN or Tailscale, with a read cache and outbox rather than a local engine. See its [README](../apps/ios/README.md). |
+| `apps/web` | Plain HTML/JS browser client and a Node launcher that hosts it with the HTTP API, for self-hosting on your own devices. The desktop app serves the same client. See its [README](../apps/web/README.md). |
 
 ## Stack decisions
 
@@ -58,6 +59,28 @@ Node refuses to strip types from files under `node_modules`, so anything that sh
 - Linux: `$XDG_CONFIG_HOME/Petty Memory/` (default `~/.config/…`)
 
 The folder contains `memory.sqlite` (with `-wal`/`-shm` files), `attachments/` (content-addressed file blobs, plus `.trash/` for 30 days after deletion) and `backups/`. The embedding model lives in `models/` inside the OS cache folder (`~/Library/Caches/Petty Memory`, `%LOCALAPPDATA%\Petty Memory\Cache`, `$XDG_CACHE_HOME/enve-memory`; override with `$ENVE_MEMORY_CACHE`). It's shared by every library, never backed up, and re-downloads if cleared.
+
+## Ordered outlines
+
+`OutlineService` in core owns item containment and sibling ordering. The desktop Outline, CLI `outline` commands, REST `/outline` routes and MCP outline tools call the same service. Item ids, note bodies and the existing Item response shape remain unchanged; outline entries wrap an item with its parent, sibling position and direct-child count.
+
+Nesting is independent of project filing. A move retains descendants and does not refile them. Decisions remain at the top level and cannot contain other items. The active outline projects active children of archived parents to the top level, while the archived view retains the stored tree. Deleting a parent adopts its children into the parent's former place and records those moves.
+
+Children are paged with an exact total. Sibling positions are finite numeric sort keys with item ids as the tie-breaker; clients request placement with `beforeId` instead of calculating keys. Schema migration, ordering, cycle checks and interchange behavior belong in core, not in client renderers.
+
+## Parity services
+
+The breadth-first parity layer ([DAFTAK_PARITY_PLAN.md](DAFTAK_PARITY_PLAN.md#current-status), contracts in [PARITY_FEATURE_CONTRACTS.md](PARITY_FEATURE_CONTRACTS.md)) adds these core services. Every client calls them; none reimplements their rules.
+
+- `presentation`: display kind, attention, review mark and checklist state in `metadata.presentation`. Completion has one authority per item: task status for tasks, `checked` for other ordinary items.
+- `versions`: item and subtree snapshots for local and synced changes, paged newest first; restore writes a new change.
+- `references`: `[[item:<id>|label]]` tokens and parsed backlinks; `items.unrelate` removes explicit connections.
+- `edits`: validates and applies AI proposals (`proposeEdit` in `@enve-memory/ai` builds them) against a subtree hash, all or nothing, and returns an undo receipt. `organizeWorker` runs opt-in background organizing.
+- `vault`: secret text notes. Remote clients seal notes themselves and store opaque envelopes; the host path derives and holds a key in memory for local use.
+- `shares`: hashed public tokens and a live, sanitized subtree projection.
+- `sync.exportChanges` / `applyChanges` / blob methods: the folder-sync engine exposed for server sync.
+
+Decisions, secret notes and archived items stay outside AI edit scopes; MCP has no vault, share, AI-apply or sync tools.
 
 ## Automations
 

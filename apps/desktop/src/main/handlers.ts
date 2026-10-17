@@ -1,19 +1,23 @@
 import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
-import { AiError, PROVIDERS, type ProviderId, ask, createProvider, enrichItem, isProviderId } from '@enve-memory/ai';
+import { basename, isAbsolute, join } from 'node:path';
+import { AiError, PROVIDERS, type ProviderId, ask, createProvider, enrichItem, isProviderId, proposeEdit } from '@enve-memory/ai';
 import { lanUrls, pairingLink } from '@enve-memory/api';
 import { localEmbeddingsSupported } from '@enve-memory/embeddings';
-import { type ItemFilter, MemoryError, pageCursor } from '@enve-memory/core';
+import { type Item, type ItemFilter, MAX_SEALED_FILE_BYTES, MemoryError, SEALED_FILE_MIME, SEALED_FILE_NAME, pageCursor } from '@enve-memory/core';
 import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder } from '@enve-memory/importers';
 import { ingestItem } from '@enve-memory/ingestion';
 import { type BrowserWindow, dialog, shell } from 'electron';
 import QRCode from 'qrcode';
-import { type AiConfig, type AiStatus, type AppInfo, IMPORT_KINDS, type ImportKind, type Prefs, SHELVES, type Shelf, UNOPENED_DAYS, type SyncStatus, type ThemeMode } from '../shared/ipc.ts';
+import {
+  type AiConfig, type AiStatus, type AppInfo, IMPORT_KINDS, type ImportKind, type Prefs, type RemoteStatus, SHELVES, type Shelf, UNOPENED_DAYS,
+  type SyncStatus, type ThemeMode, type VaultFile,
+} from '../shared/ipc.ts';
 import { DesktopError, type Handlers } from './dispatch.ts';
 import type { Library } from './library.ts';
 import { type LaunchContext, claudeAddArgs, findExecutable, mcpLaunch, setupSnippets } from './mcp.ts';
+import { REMOTE_TOKEN, remoteUrl } from './remote.ts';
 import type { PrefsFile } from './prefs.ts';
 import type { SecretStore } from './secrets.ts';
 
@@ -33,6 +37,9 @@ export interface HandlerContext {
 
 const CLOUD_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'openrouter']);
 const NON_TASK = (type: string) => type !== 'task' && type !== 'decision';
+
+const MAX_KIT_BYTES = 256 * 1024;
+const formatMiB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 
 const str = (value: unknown, name: string): string => {
   if (typeof value !== 'string') throw new DesktopError('invalid', `${name} must be text.`);
@@ -87,7 +94,7 @@ export function createHandlers(ctx: HandlerContext): Handlers {
       providers: Object.entries(PROVIDERS).map(([id, info]) => ({
         id, label: info.label, baseUrl: info.baseUrl, needsKey: info.needsKey, defaultModel: info.defaultModel ?? null, cloud: CLOUD_PROVIDERS.has(id),
       })),
-      keys: secrets.names(),
+      keys: secrets.names().filter((name) => name !== REMOTE_TOKEN),
       encryptionAvailable: secrets.available,
       error: settings.aiProvider === 'none' ? null : library.aiError,
     };
@@ -108,12 +115,59 @@ export function createHandlers(ctx: HandlerContext): Handlers {
     };
   };
 
+  const remoteStatus = (): RemoteStatus => ({
+    url: prefs.get('remoteUrl'), hasToken: secrets.names().includes(REMOTE_TOKEN), running: library.remoteRunning, last: library.lastRemote,
+  });
+
   const launch = () => mcpLaunch(ctx.launch);
 
   const pick = async (options: Electron.OpenDialogOptions): Promise<string | null> => {
     const parent = ctx.parentWindow();
     const picked = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
     return picked.canceled ? null : picked.filePaths[0] ?? null;
+  };
+
+  const dialogOpen = async (options: Electron.OpenDialogOptions) => {
+    const parent = ctx.parentWindow();
+    const picked = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+    return picked.canceled ? [] : picked.filePaths;
+  };
+  const dialogSave = async (options: Electron.SaveDialogOptions): Promise<string | null> => {
+    const parent = ctx.parentWindow();
+    const picked = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+    return picked.canceled || !picked.filePath ? null : picked.filePath;
+  };
+
+  const sealedFiles = (itemId: string) =>
+    memory().items.get(itemId).attachments.filter((a) => a.filename === SEALED_FILE_NAME && a.mimeType === SEALED_FILE_MIME);
+
+  const vaultSession = () => {
+    const current = memory();
+    const vault = current.vault;
+    const revision = vault.sessionRevision;
+    return () => {
+      if (memory() !== current || vault.sessionRevision !== revision) throw new MemoryError('locked', 'The vault or library changed. Open it again and retry.');
+      return vault;
+    };
+  };
+
+  // Names and types live inside the ciphertext, so listing them decrypts each file; the bytes are wiped straight away.
+  const fileInfo = (itemId: string, attachment: { id: string; createdAt: string }): VaultFile => {
+    const { filename, mimeType, data } = memory().vault.readFile(itemId, attachment.id);
+    const size = data.byteLength;
+    data.fill(0);
+    return { id: attachment.id, filename, mimeType, size, createdAt: attachment.createdAt };
+  };
+
+  const secretItems = () => {
+    const found: Item[] = [];
+    let before: string | undefined;
+    for (;;) {
+      const page = memory().items.list({ secret: true, before }, 200);
+      found.push(...page);
+      if (page.length < 200) return found;
+      before = pageCursor(page.at(-1)!);
+    }
   };
 
   const IMPORT_DIALOGS: Record<ImportKind, Electron.OpenDialogOptions> = {
@@ -176,6 +230,9 @@ export function createHandlers(ctx: HandlerContext): Handlers {
     'items.retryIngest': (id) => ingestItem(memory(), id),
     'items.retryFailed': () => memory().items.retryFailedIngest(),
     'items.openFile': async (id) => {
+      if (memory().items.get(id).metadata.secret === true) {
+        throw new DesktopError('invalid', 'Encrypted files are saved from the Secret section after unlocking. They are never opened directly.');
+      }
       const { attachment, data } = memory().files.read(id);
       // Opened from a temp copy under its real name, so the OS picks the right app and edits can't touch the stored blob.
       const dir = join(tmpdir(), 'enve-memory', id);
@@ -221,6 +278,164 @@ export function createHandlers(ctx: HandlerContext): Handlers {
       });
     },
 
+    'outline.children': (parentId, options) => memory().outline.children(parentId, options),
+    'outline.get': (id) => memory().outline.get(id),
+    'outline.ancestors': (id) => memory().outline.ancestors(id),
+    'outline.move': (id, input) => memory().outline.move(id, input),
+    'outline.createNote': (input) => memory().outline.createNote(input),
+
+    'editor.apply': (commands, options) => {
+      if (!Array.isArray(commands)) throw new DesktopError('invalid', 'Editor commands must be a list.');
+      return memory().editor.apply(commands, options);
+    },
+    'editor.undo': (actionId) => memory().editor.undo(str(actionId, 'Action')),
+    'editor.redo': (actionId) => memory().editor.redo(str(actionId, 'Action')),
+
+    'presentation.get': (id) => memory().presentation.get(id),
+    'presentation.update': (id, patch) => memory().presentation.update(id, patch),
+    'presentation.toggle': (id, checked) => memory().presentation.toggle(id, Boolean(checked)),
+    'presentation.reset': (id) => memory().presentation.reset(id),
+    'presentation.progress': (id) => memory().presentation.progress(id),
+
+    'versions.list': (itemId, options) => memory().versions.list(itemId, options),
+    'versions.get': (versionId) => memory().versions.get(versionId),
+    'versions.restore': (versionId) => memory().versions.restore(versionId),
+
+    'references.insert': (fromId, toId, label) => memory().references.insert(fromId, toId, label),
+    'references.list': (id) => memory().references.list(id),
+    'items.relate': (fromId, toId, kind) => memory().items.relate(fromId, toId, kind),
+    'items.unrelate': (fromId, toId, kind) => memory().items.unrelate(fromId, toId, kind),
+
+    'edits.propose': (rootId, instruction) =>
+      proposeEdit(memory(), requireProvider(), { rootId: str(rootId, 'Item'), instruction: str(instruction, 'Instruction') }),
+    'edits.apply': (proposal) => memory().edits.apply(proposal),
+    'edits.undo': (receipt) => memory().edits.undo(receipt),
+
+    'vault.state': () => memory().vault.state(),
+    'vault.setup': (passphrase) => memory().vault.setup(str(passphrase, 'Passphrase')),
+    'vault.unlock': (passphrase) => memory().vault.unlock(str(passphrase, 'Passphrase')),
+    'vault.lock': () => memory().vault.lock(),
+    'vault.create': (input) => memory().vault.create(input),
+    'vault.read': (id) => memory().vault.read(id),
+    'vault.update': (id, input) => memory().vault.update(id, input),
+    'vault.outline': () => {
+      const m = memory();
+      if (!m.vault.state().unlocked) throw new MemoryError('locked', 'Unlock the vault first.');
+      return secretItems().map((item) => {
+        const entry = m.outline.get(item.id);
+        return { id: item.id, parentId: entry.parentId, title: m.vault.read(item.id).title, childCount: entry.childCount, updatedAt: item.updatedAt };
+      });
+    },
+    'vault.files': (itemId) => sealedFiles(str(itemId, 'Item')).map((attachment) => fileInfo(itemId, attachment)),
+    'vault.attachFiles': async (itemId) => {
+      const id = str(itemId, 'Item');
+      const session = vaultSession();
+      if (memory().items.get(id).metadata.secret !== true) throw new DesktopError('invalid', 'Only secret notes hold encrypted files.');
+      const paths = await dialogOpen({ title: 'Choose files to encrypt into this secret note', properties: ['openFile', 'multiSelections'] });
+      if (!paths.length) return null;
+      session();
+      let attached = 0;
+      const failed: { filename: string; message: string }[] = [];
+      for (const path of paths) {
+        const filename = basename(path);
+        try {
+          const size = statSync(path).size;
+          if (size > MAX_SEALED_FILE_BYTES) throw new DesktopError('invalid', `It is ${formatMiB(size)}; encrypted files can be at most 20 MiB.`);
+          const data = readFileSync(path);
+          try {
+            session().attachFile(id, { data, filename });
+            attached++;
+          } finally {
+            data.fill(0);
+          }
+        } catch (error) {
+          failed.push({ filename, message: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return { attached, failed };
+    },
+    'vault.saveFile': async (itemId, attachmentId) => {
+      const session = vaultSession();
+      const { filename, data } = session().readFile(str(itemId, 'Item'), str(attachmentId, 'Attachment'));
+      try {
+        const target = await dialogSave({ title: 'Save a decrypted copy', defaultPath: filename });
+        if (!target) return null;
+        session();
+        writeFileSync(target, data);
+        return { filename: basename(target) };
+      } finally {
+        data.fill(0);
+      }
+    },
+    'vault.removeFile': (itemId, attachmentId) => memory().vault.removeFile(str(itemId, 'Item'), str(attachmentId, 'Attachment')),
+    'vault.recoveryKit': async () => {
+      const session = vaultSession();
+      const { kit, code } = session().recoveryKit();
+      const target = await dialogSave({
+        title: 'Save the vault recovery kit', defaultPath: 'Petty Memory recovery kit.json', filters: [{ name: 'Recovery kit', extensions: ['json'] }],
+      });
+      if (!target) return null;
+      session();
+      // Locked while the dialog was open: nothing is written and no code is shown after the fact.
+      if (!memory().vault.state().unlocked) throw new MemoryError('locked', 'The vault was locked before the kit was saved. Unlock it and create a new kit.');
+      writeFileSync(target, `${JSON.stringify(kit, null, 2)}\n`);
+      return { code };
+    },
+    'vault.recover': async (code) => {
+      const session = vaultSession();
+      const text = str(code, 'Recovery code');
+      const [path] = await dialogOpen({ title: 'Choose the vault recovery kit', properties: ['openFile'], filters: [{ name: 'Recovery kit', extensions: ['json'] }] });
+      if (!path) return null;
+      session();
+      if (statSync(path).size > MAX_KIT_BYTES) throw new DesktopError('invalid', 'That file is too large to be a Petty Memory recovery kit.');
+      let kit: unknown;
+      try {
+        kit = JSON.parse(readFileSync(path, 'utf8'));
+      } catch {
+        throw new DesktopError('invalid', 'That file isn’t a Petty Memory recovery kit.');
+      }
+      return session().recover(kit, text);
+    },
+    'vault.restoreVersion': (versionId) => memory().vault.restoreVersion(str(versionId, 'Version')),
+
+    'shares.list': () => memory().shares.list(),
+    'shares.create': (rootId, options) => {
+      const { share, token } = memory().shares.create(rootId, options);
+      const { url, lanUrls: network } = library.apiStatus;
+      const page = library.servesWeb;
+      const path = page ? `/s/${encodeURIComponent(token)}` : `/api/v1/public/${encodeURIComponent(token)}`;
+      const links = [
+        ...(url ? [{ url: `${url}${path}`, label: 'On this computer' }] : []),
+        ...network.map((base) => ({ url: `${base}${path}`, label: 'On your network' })),
+      ];
+      return { share, token, links, page };
+    },
+    'shares.revoke': (shareId) => memory().shares.revoke(shareId),
+
+    'remoteSync.get': remoteStatus,
+    'remoteSync.configure': async ({ url, token }) => {
+      const address = remoteUrl(str(url, 'Server address'));
+      const secret = token === undefined ? undefined : str(token, 'Token').trim();
+      if (secret === '' || (secret === undefined && !secrets.names().includes(REMOTE_TOKEN))) {
+        throw new DesktopError('invalid', 'Paste a sync token created on the server with `petty-memory clients add "<this computer>" --scope sync`.');
+      }
+      if (secret) secrets.set(REMOTE_TOKEN, secret);
+      prefs.set('remoteUrl', address);
+      await library.remoteSync();
+      return remoteStatus();
+    },
+    'remoteSync.run': async () => {
+      if (!prefs.get('remoteUrl')) throw new DesktopError('invalid', 'Connect to a server first.');
+      await library.remoteSync();
+      return remoteStatus();
+    },
+    'remoteSync.disconnect': () => {
+      secrets.delete(REMOTE_TOKEN);
+      prefs.set('remoteUrl', null);
+      library.forgetRemote();
+      return remoteStatus();
+    },
+
     'projects.list': (status) => {
       const m = memory();
       return m.projects.list(status).map((project) => ({ ...project, openTasks: m.tasks.list({ project: project.id }, 200).length }));
@@ -229,11 +444,7 @@ export function createHandlers(ctx: HandlerContext): Handlers {
     'projects.update': (ref, input) => memory().projects.update(ref, input),
     'projects.setMemory': (ref, text) => memory().projects.setMemory(ref, str(text, 'Memory')),
     'projects.briefing': (ref) => memory().briefing(ref),
-    'projects.memoryHistory': (ref) =>
-      memory()
-        .activity.recent({ project: ref }, 200)
-        .filter((c) => c.entity === 'project' && c.op === 'set_memory')
-        .map((c) => ({ id: c.id, at: c.at, actor: c.actor, memory: String(c.data?.memory ?? '') })),
+    'projects.memoryHistory': (ref, options) => memory().projects.memoryHistory(ref, options),
     'decisions.record': (input) => memory().decisions.record(input),
 
     'tasks.list': (query, limit) => memory().tasks.list(query, limit),
@@ -305,8 +516,8 @@ export function createHandlers(ctx: HandlerContext): Handlers {
 
     'clients.list': () => memory().clients.list(),
     'clients.create': (name, scopes) => memory().clients.create(name, scopes),
-    'clients.pair': async (name) => {
-      const { client, token } = memory().clients.create(name, ['read', 'write']);
+    'clients.pair': async (name, options) => {
+      const { client, token } = memory().clients.create(name, options?.secrets === true ? ['read', 'write', 'secrets'] : ['read', 'write']);
       const links = await Promise.all(
         lanUrls(library.apiStatus.port).map(async (url) => {
           const link = pairingLink(url, token, client.name);

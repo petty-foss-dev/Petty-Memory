@@ -39,9 +39,13 @@ struct MainView: View {
     @Environment(Router.self) private var router
     @Environment(Connection.self) private var connection
     @Environment(OutboxService.self) private var outbox
+    @Environment(EditorHistory.self) private var history
+    @Environment(OfflineSync.self) private var offline
     @Environment(ProjectStore.self) private var projects
     @Environment(ReminderScheduler.self) private var reminders
+    @Environment(VaultSession.self) private var vault
     @Environment(\.hearth) private var hearth
+    @Environment(\.scenePhase) private var scenePhase
 
     private let dockHeight: CGFloat = 92
 
@@ -68,9 +72,20 @@ struct MainView: View {
             await reminders.sync(connection.client)
         }
         .task(id: connection.pairing) {
+            vault.lock()
+            history.reset()
+            offline.reset()
             // Keeps the share sheet's project list current for this library.
             projects.reset()
-            try? await projects.load(connection.client)
+            _ = try? await projects.load(connection)
+        }
+        .task(id: OfflineSyncTrigger(pairing: connection.pairing, isOnline: connection.isOnline, isActive: scenePhase == .active)) {
+            // One long-poll for the whole app, only in the foreground: cancelled when it leaves, goes offline or pairs elsewhere.
+            guard scenePhase == .active else { return }
+            await offline.run()
+        }
+        .onChange(of: outbox.notices.last?.id) { _, id in
+            if id != nil, let notice = outbox.notices.last { router.show(notice.message) }
         }
         .task(id: outbox.pendingCount) {
             // While something is waiting, keep trying on the backoff schedule.
@@ -99,10 +114,21 @@ struct MainView: View {
             case .item(let id): ItemDetailView(itemID: id)
             case .project(let id): ProjectBriefingView(projectID: id)
             case .shelf(let shelf): ShelfView(shelf: shelf)
+            case .outline(let parentID): OutlineView(parentID: parentID)
+            case .history(let itemID): HistoryView(itemID: itemID)
+            case .vault: VaultView()
+            case .vaultNote(let id): VaultNoteView(itemID: id)
+            case .shares: SharesView()
             }
         }
         .id(route)
     }
+}
+
+private struct OfflineSyncTrigger: Equatable {
+    let pairing: Pairing?
+    let isOnline: Bool
+    let isActive: Bool
 }
 
 /// Incoming pairing links: connect straight away on first run, ask before replacing a pairing.

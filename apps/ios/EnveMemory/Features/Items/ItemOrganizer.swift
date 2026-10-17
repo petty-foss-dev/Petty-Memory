@@ -7,8 +7,14 @@ struct ItemActions {
     let router: Router
 
     @discardableResult
-    func run(_ endpoint: Endpoint, title: String, sent: String) async -> Bool {
-        router.report(await outbox.submit(endpoint, kind: .note, title: title), sent: sent)
+    func run(_ endpoint: Endpoint, kind: OutboxEntry.Kind = .note, title: String, sent: String) async -> Bool {
+        router.report(await outbox.submit(endpoint, kind: kind, title: title), sent: sent)
+    }
+
+    @discardableResult
+    func edit(_ endpoint: Endpoint?, title: String, sent: String) async -> Bool {
+        guard let endpoint else { return false }
+        return await run(endpoint, kind: .edit, title: title, sent: sent)
     }
 
     /// A signal for the "unopened" shelf; it shouldn't reload the screen.
@@ -99,6 +105,7 @@ struct OrganizeCard: View {
         } label: {
             Text("Remind me")
                 .font(HearthFont.subheadline)
+                .foregroundStyle(hearth.accentText)
                 .padding(.horizontal, HearthSpacing.md)
                 .padding(.vertical, HearthSpacing.sm)
                 .background(Capsule().fill(hearth.accentMuted))

@@ -6,6 +6,7 @@ import { call, errorMessage, useLive } from '../lib/api.ts';
 import { TYPE_LABELS, formatBytes, formatDateTime, relativeTime } from '../lib/format.ts';
 import { type SettingsSection, useApp } from '../context.ts';
 import { CopyButton, Empty, Icon, ProjectSelect, Toggle, useFeedback } from '../ui.tsx';
+import { VaultSettings } from './Vault.tsx';
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'library', label: 'Library' },
@@ -15,6 +16,8 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'ai', label: 'AI' },
   { id: 'automations', label: 'Automations' },
   { id: 'sync', label: 'Sync' },
+  { id: 'vault', label: 'Secret notes' },
+  { id: 'sharing', label: 'Shared links' },
   { id: 'import', label: 'Import' },
   { id: 'backups', label: 'Backups' },
   { id: 'export', label: 'Export' },
@@ -46,6 +49,13 @@ export function Settings({ section }: { section?: SettingsSection }) {
           {current === 'ai' && <AiSection />}
           {current === 'automations' && <AutomationsSection />}
           {current === 'sync' && <SyncSection />}
+          {current === 'sync' && <RemoteSyncSection />}
+          {current === 'vault' && (
+            <Section title="Secret notes" intro="Notes encrypted with a passphrase. Search, AI, shared links and other apps only ever see “Secret note”.">
+              <VaultSettings />
+            </Section>
+          )}
+          {current === 'sharing' && <SharingSection />}
           {current === 'import' && <ImportSection />}
           {current === 'backups' && <BackupsSection />}
           {current === 'export' && <ExportSection />}
@@ -162,6 +172,7 @@ function DevicesSection() {
   const [scopes, setScopes] = useState<ClientScope[]>(['read', 'capture']);
   const [created, setCreated] = useState<{ name: string; token: string } | null>(null);
   const [phoneName, setPhoneName] = useState('My iPhone');
+  const [phoneSecrets, setPhoneSecrets] = useState(false);
   const [pair, setPair] = useState<PairResult | null>(null);
   const status = api.data;
 
@@ -229,7 +240,7 @@ function DevicesSection() {
         }}
       >
         <input aria-label="Client name" placeholder="Chrome extension" value={name} onChange={(event) => setName(event.target.value)} />
-        {(['read', 'capture', 'write'] as ClientScope[]).map((scope) => (
+        {SCOPE_CHOICES.map((scope) => (
           <label key={scope} className="check" title={SCOPE_HELP[scope]}>
             <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => setScopes(event.target.checked ? [...scopes, scope] : scopes.filter((s) => s !== scope))} />
             {scope}
@@ -237,7 +248,18 @@ function DevicesSection() {
         ))}
         <button type="submit" className="button small primary" disabled={!name.trim() || scopes.length === 0}>Create token</button>
       </form>
-      <p className="note">read: search and view · capture: save notes, links, tasks and files (the extension needs only this) · write: every non-destructive change.</p>
+      <p className="note">
+        read: search and view · capture: save notes, links, tasks and files (the extension needs only this) · write: every non-destructive change.
+        Two scopes are never implied by the others: <strong>secrets</strong> lets a device unlock and use secret notes, and <strong>sync</strong> lets
+        another Petty Memory replicate this whole library, deletions included. Give sync only to your own computers’ server sync.
+      </p>
+      {(scopes.includes('sync') || scopes.includes('secrets')) && (
+        <p className="warning small">
+          {scopes.includes('sync') && 'A sync token can copy and change everything in this library, including deleting items. '}
+          {scopes.includes('secrets') && 'A secrets token can work with secret notes. '}
+          Only give it to a device you fully trust.
+        </p>
+      )}
       {created && (
         <div className="token-once" role="alert">
           <p><strong>Token for {created.name}</strong> — shown once. Paste it into the client now.</p>
@@ -255,12 +277,21 @@ function DevicesSection() {
         className="token-form"
         onSubmit={(event) => {
           event.preventDefault();
-          call('clients.pair', phoneName).then(setPair, fail);
+          call('clients.pair', phoneName, { secrets: phoneSecrets }).then(setPair, fail);
         }}
       >
         <input aria-label="Phone name" value={phoneName} onChange={(event) => setPhoneName(event.target.value)} />
+        <label className="check" title={SCOPE_HELP.secrets}>
+          <input type="checkbox" checked={phoneSecrets} onChange={(event) => setPhoneSecrets(event.target.checked)} /> Also allow secret notes
+        </label>
         <button type="submit" className="button small" disabled={!phoneName.trim()}>Pair a phone</button>
       </form>
+      {phoneSecrets && (
+        <p className="warning small">
+          The phone gets the <strong>secrets</strong> scope: it can read encrypted notes and files and decrypts them itself with your vault passphrase.
+          Revoking its token later stops it reaching this library, but can’t erase anything the phone already decrypted or saved.
+        </p>
+      )}
       {pair && (
         <div className="pairing" role="alert">
           {!status?.lan && <p className="warning">Turn on “Allow devices on this network” above, or the phone won’t be able to reach this computer.</p>}
@@ -273,7 +304,9 @@ function DevicesSection() {
               </figure>
             ))}
           </div>
-          <p className="note">The code contains the token and is shown once.</p>
+          <p className="note">
+            The code contains the token and is shown once. This phone can {pair.client.scopes.includes('secrets') ? 'read, change and open secret notes' : 'read and change the library, but not secret notes'}.
+          </p>
           <button className="link-button" onClick={() => setPair(null)}>Done</button>
         </div>
       )}
@@ -297,10 +330,14 @@ function DevicesSection() {
   );
 }
 
+const SCOPE_CHOICES: ClientScope[] = ['read', 'capture', 'write', 'secrets', 'sync'];
+
 const SCOPE_HELP: Record<ClientScope, string> = {
   read: 'Search and view the library',
   capture: 'Save notes, links, tasks and files',
   write: 'Every non-destructive change (includes capture)',
+  secrets: 'Unlock, read and write secret notes. Not included in read or write',
+  sync: 'Full replication for server sync, deletions included. Not included in read or write',
 };
 
 function SearchSection() {
@@ -818,6 +855,114 @@ function SyncSection() {
           <button className="button small" disabled={busy} onClick={() => void stop()}>Stop syncing</button>
         </>
       )}
+    </Section>
+  );
+}
+
+function RemoteSyncSection() {
+  const fail = useFail();
+  const { toast, confirm } = useFeedback();
+  const remote = useLive(() => call('remoteSync.get'), []);
+  const [url, setUrl] = useState('');
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const data = remote.data;
+  if (!data) return null;
+
+  const act = (task: () => Promise<unknown>) => {
+    setBusy(true);
+    task().then(() => remote.reload(), fail).finally(() => setBusy(false));
+  };
+  const disconnect = async () => {
+    const ok = await confirm({
+      title: 'Disconnect from the server?',
+      body: <p>This computer stops syncing with {data.url}. Nothing is deleted here or on the server, and the saved token is removed from this computer.</p>,
+      confirmLabel: 'Disconnect',
+    });
+    if (ok) act(async () => {
+      await call('remoteSync.disconnect');
+      toast('Disconnected');
+    });
+  };
+
+  return (
+    <Section
+      title="Sync through a server"
+      intro={<>Sync with a Petty Memory server you run, such as <code>petty-memory serve</code> on a home machine. Folder sync above keeps working alongside it.</>}
+    >
+      {data.url ? (
+        <>
+          <Row label="Server" detail={<code className="path">{data.url}</code>}>
+            <button className="button small" disabled={busy || data.running} onClick={() => act(() => call('remoteSync.run'))}>
+              {data.running ? 'Syncing…' : 'Sync now'}
+            </button>
+          </Row>
+          <Row
+            label="Last sync"
+            detail={data.last
+              ? data.last.error
+                ? <span className="error-text">{data.last.error}</span>
+                : <>{formatDateTime(data.last.at)} · sent {data.last.pushed}, received {data.last.pulled}{data.last.conflicts ? `, ${data.last.conflicts} conflicting edits kept` : ''}{data.last.rejected ? <span className="warning"> · {data.last.rejected} skipped</span> : null}</>
+              : 'Syncs every 2 minutes and when you switch back to this window.'}
+          />
+          <button className="button small" disabled={busy} onClick={() => void disconnect()}>Disconnect</button>
+        </>
+      ) : (
+        <form className="sync-setup" onSubmit={(event) => {
+          event.preventDefault();
+          act(async () => {
+            await call('remoteSync.configure', { url, token });
+            setToken('');
+          });
+        }}>
+          <div className="field-row">
+            <label className="field">
+              <span>Server address</span>
+              <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://memory.example.com" autoComplete="url" />
+            </label>
+            <label className="field">
+              <span>Token</span>
+              <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="A sync token from the server" autoComplete="off" />
+            </label>
+          </div>
+          <p className="note">
+            On the server, create a token with the sync scope: <code>petty-memory clients add "My laptop" --scope sync</code>. Ordinary read/write tokens
+            can’t sync. The token is encrypted with this computer’s credential store and never written to the library, exports or sync.
+          </p>
+          <button type="submit" className="button primary small" disabled={busy || !url.trim() || !token.trim()}>{busy ? 'Connecting…' : 'Connect'}</button>
+        </form>
+      )}
+    </Section>
+  );
+}
+
+function SharingSection() {
+  const fail = useFail();
+  const { toast } = useFeedback();
+  const { openItem } = useApp();
+  const shares = useLive(() => call('shares.list'), []);
+  const list = shares.data ?? [];
+  return (
+    <Section
+      title="Shared links"
+      intro="Read-only links to an item and what’s inside it. Make one from an item’s Share… button. Links work wherever you run the Petty Memory web host; nothing is published for you."
+    >
+      {shares.data && list.length === 0 && <p className="muted">No shared links yet.</p>}
+      <ul className="client-list">
+        {list.map((share) => (
+          <li key={share.id} className={share.revokedAt ? 'revoked' : ''}>
+            <span>
+              <button className="link-button" onClick={() => openItem(share.rootId)}>Open the shared item</button>
+              {' · '}made {formatDateTime(share.createdAt)}
+              {share.excludedIds.length > 0 && ` · ${share.excludedIds.length} left out`}
+              {share.revokedAt ? ` · revoked ${relativeTime(share.revokedAt)}` : share.expiresAt ? ` · expires ${formatDateTime(share.expiresAt)}` : ' · no expiry'}
+            </span>
+            {!share.revokedAt && (
+              <button className="button small danger-ghost" onClick={() => call('shares.revoke', share.id).then(() => toast('Link revoked'), fail)}>Revoke</button>
+            )}
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }

@@ -7,8 +7,8 @@ enum HearthMode: String, CaseIterable, Identifiable, Sendable {
     var displayName: String {
         switch self {
         case .system: "System"
-        case .ink: "Ink"
-        case .paper: "Paper"
+        case .ink: "Dark"
+        case .paper: "Light"
         }
     }
 }
@@ -22,64 +22,70 @@ struct HearthPalette: Equatable {
     var textSecondary: Color
     var textTertiary: Color
     var accent: Color
+    var accentText: Color
     var accentMuted: Color
     var onAccent: Color
     var hairline: Color
+    var controlBorder: Color
     var scrim: Color
     var danger: Color
     var success: Color
     var isDark: Bool
-
-    static let ember = Color(hex: 0xF5921A)
 }
 
 extension HearthPalette {
     static let ink = HearthPalette(
-        background: Color(hex: 0x0C0A09),
-        surface: Color(hex: 0x191512),
-        surfaceSunken: .black,
-        textPrimary: Color(hex: 0xF0E9DC),
-        textSecondary: Color(hex: 0xA99F92),
-        textTertiary: Color(hex: 0x6E665C),
-        accent: ember,
-        accentMuted: ember.opacity(0.14),
-        onAccent: Color(hex: 0x1A120A),
-        hairline: .white.opacity(0.08),
+        background: Color(hex: 0x0E1113),
+        surface: Color(hex: 0x181D20),
+        surfaceSunken: Color(hex: 0x0A0D0F),
+        textPrimary: Color(hex: 0xE6EBEE),
+        textSecondary: Color(hex: 0xAEB8BE),
+        textTertiary: Color(hex: 0x939EA5),
+        accent: Color(hex: 0x4FC1C9),
+        accentText: Color(hex: 0x7FD3D9),
+        accentMuted: Color(hex: 0x173238),
+        onAccent: Color(hex: 0x0B1F22),
+        hairline: .white.opacity(0.09),
+        controlBorder: Color(hex: 0x71818A),
         scrim: .black,
-        danger: Color(hex: 0xD06A5C),
-        success: Color(hex: 0x7DB38A),
+        danger: Color(hex: 0xEE8277),
+        success: Color(hex: 0x6CC79A),
         isDark: true)
 
     static let paper = HearthPalette(
-        background: Color(hex: 0xF7F2E9),
+        background: Color(hex: 0xF3F5F6),
         surface: .white,
-        surfaceSunken: Color(hex: 0xEFE8DB),
-        textPrimary: Color(hex: 0x231F1B),
-        textSecondary: Color(hex: 0x7A7064),
-        textTertiary: Color(hex: 0xA89D8F),
-        accent: ember,
-        accentMuted: ember.opacity(0.12),
-        onAccent: Color(hex: 0x1A120A),
+        surfaceSunken: Color(hex: 0xEEF1F3),
+        textPrimary: Color(hex: 0x1B2328),
+        textSecondary: Color(hex: 0x4A565E),
+        textTertiary: Color(hex: 0x5C6870),
+        accent: Color(hex: 0x0F7A8A),
+        accentText: Color(hex: 0x0F6573),
+        accentMuted: Color(hex: 0xE2F1F3),
+        onAccent: .white,
         hairline: .black.opacity(0.08),
-        scrim: Color(hex: 0x231F1B),
-        danger: Color(hex: 0xA8453A),
-        success: Color(hex: 0x3F7F50),
+        controlBorder: Color(hex: 0x74838D),
+        scrim: Color(hex: 0x1B2328),
+        danger: Color(hex: 0xB23A31),
+        success: Color(hex: 0x2F7D55),
         isDark: false)
 
     static let oled = HearthPalette(
         background: .black,
-        surface: Color(hex: 0x0C0C0D),
+        surface: Color(hex: 0x0B0D0E),
         surfaceSunken: .black,
-        textPrimary: Color(hex: 0xF0E9DC),
-        textSecondary: Color(hex: 0xA99F92),
-        textTertiary: Color(hex: 0x6E665C),
-        accent: ember,
-        accentMuted: ember.opacity(0.16),
-        onAccent: Color(hex: 0x1A120A),
-        hairline: .white.opacity(0.11),
+        textPrimary: Color(hex: 0xE6EBEE),
+        textSecondary: Color(hex: 0xAEB8BE),
+        textTertiary: Color(hex: 0x939EA5),
+        accent: Color(hex: 0x4FC1C9),
+        accentText: Color(hex: 0x7FD3D9),
+        accentMuted: Color(hex: 0x173238),
+        onAccent: Color(hex: 0x0B1F22),
+        hairline: .white.opacity(0.09),
+        controlBorder: Color(hex: 0x71818A),
         scrim: .black,
-        danger: Color(hex: 0xD06A5C),
-        success: Color(hex: 0x7DB38A),
+        danger: Color(hex: 0xEE8277),
+        success: Color(hex: 0x6CC79A),
         isDark: true)
 
     static func resolve(_ mode: HearthMode, systemDark: Bool, oled: Bool) -> HearthPalette {

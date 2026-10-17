@@ -282,4 +282,144 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX items_intent ON items(intent) WHERE intent IS NOT NULL;
     `,
   },
+  {
+    name: 'outline',
+    sql: `
+      -- No foreign key: a synced child can arrive before its parent. Core keeps every parent_id pointing at an item.
+      ALTER TABLE items ADD COLUMN parent_id TEXT;
+      -- Ascending among siblings, ties broken by id. Existing items become roots in creation order, derived from the
+      -- item alone so every device computes the same key without recording a change.
+      ALTER TABLE items ADD COLUMN sort_order REAL NOT NULL DEFAULT 0;
+      UPDATE items SET sort_order = coalesce(round((julianday(created_at) - 2440587.5) * 86400000.0), 0);
+      CREATE INDEX items_outline ON items(parent_id, sort_order, id);
+      CREATE INDEX items_archived ON items(archived_at) WHERE archived_at IS NOT NULL;
+    `,
+  },
+  {
+    name: 'versions_and_shares',
+    sql: `
+      -- Immutable item states (null = deleted), one per user-visible change, local or synced. Built per device from
+      -- the changes it applies, so not synced itself. No foreign key: a deleted item's history must survive it.
+      CREATE TABLE item_versions (
+        seq INTEGER PRIMARY KEY,
+        id TEXT NOT NULL UNIQUE,
+        item_id TEXT NOT NULL,
+        parent_id TEXT,
+        at TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        op TEXT NOT NULL,
+        state TEXT CHECK (state IS NULL OR json_valid(state))
+      ) STRICT;
+      CREATE INDEX item_versions_item ON item_versions(item_id, seq);
+      CREATE INDEX item_versions_parent ON item_versions(parent_id, seq);
+
+      -- Existing items get their current state as a baseline, labelled as such; earlier states aren't invented.
+      INSERT INTO item_versions (id, item_id, parent_id, at, actor, op, state)
+      SELECT
+        substr(t.ms, 1, 8) || '-' || substr(t.ms, 9, 4) || '-7' || substr(t.r, 1, 3) || '-'
+          || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(t.r, 4, 3) || '-' || substr(t.r, 7, 12),
+        i.id, i.parent_id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'migration', 'baseline',
+        json_object(
+          'item', json_object(
+            'id', i.id, 'type', i.type, 'title', i.title, 'body', i.body, 'url', i.url, 'content', i.content,
+            'metadata', i.metadata, 'project_id', i.project_id, 'source', i.source, 'created_at', i.created_at,
+            'updated_at', i.updated_at, 'archived_at', i.archived_at, 'intent', i.intent, 'pinned_at', i.pinned_at,
+            'opened_at', i.opened_at, 'remind_at', i.remind_at, 'reminded_at', i.reminded_at,
+            'parent_id', i.parent_id, 'sort_order', i.sort_order),
+          'task', json((SELECT json_object('status', k.status, 'priority', k.priority, 'due_at', k.due_at, 'completed_at', k.completed_at)
+            FROM tasks k WHERE k.item_id = i.id)),
+          'tags', json((SELECT json_group_array(g.name) FROM (SELECT tg.name FROM item_tags it JOIN tags tg ON tg.id = it.tag_id
+            WHERE it.item_id = i.id ORDER BY tg.name) g)),
+          'attachments', json((SELECT json_group_array(json_object('id', a.id, 'sha256', a.sha256, 'filename', a.filename,
+            'mime_type', a.mime_type, 'size', a.size, 'created_at', a.created_at)) FROM attachments a WHERE a.item_id = i.id)))
+      FROM items i JOIN (
+        SELECT seq, lower(hex(randomblob(9))) AS r,
+          printf('%012x', CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) AS ms
+        FROM items
+      ) t ON t.seq = i.seq
+      ORDER BY i.seq;
+
+      -- Public read-only links to a subtree. Only a hash of each link's token is kept. Configuration, so not logged.
+      CREATE TABLE public_shares (
+        id TEXT PRIMARY KEY,
+        root_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        excluded_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(excluded_ids)),
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT
+      ) STRICT;
+    `,
+  },
+  {
+    name: 'version_snapshot_boundaries',
+    sql: `
+      ALTER TABLE item_versions ADD COLUMN snapshot_seq INTEGER;
+      UPDATE item_versions SET snapshot_seq = seq;
+      UPDATE item_versions SET snapshot_seq = (SELECT max(seq) FROM item_versions WHERE op = 'baseline')
+        WHERE op = 'baseline';
+    `,
+  },
+  {
+    name: 'editor_journal_and_memory_history',
+    sql: `
+      -- Structural edits that can be undone and redone: only the items an action changed, before and after. Local
+      -- derived history, so neither logged nor synced; undo and redo are ordinary logged changes.
+      CREATE TABLE editor_actions (
+        seq INTEGER PRIMARY KEY,
+        id TEXT NOT NULL UNIQUE,
+        actor TEXT NOT NULL,
+        label TEXT NOT NULL,
+        focus_id TEXT NOT NULL,
+        undo_focus_id TEXT NOT NULL,
+        created_ids TEXT NOT NULL CHECK (json_valid(created_ids)),
+        commands_hash TEXT NOT NULL,
+        entries TEXT NOT NULL CHECK (json_valid(entries)),
+        created_at TEXT NOT NULL,
+        undone_at TEXT
+      ) STRICT;
+
+      -- Every project memory text this device wrote or received. Built per device like item history, so not synced.
+      CREATE TABLE project_memory_versions (
+        seq INTEGER PRIMARY KEY,
+        id TEXT NOT NULL UNIQUE,
+        project_id TEXT NOT NULL,
+        at TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        op TEXT NOT NULL,
+        memory TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX project_memory_versions_project ON project_memory_versions(project_id, seq);
+
+      -- Each recorded set_memory change kept its full text.
+      INSERT INTO project_memory_versions (id, project_id, at, actor, op, memory)
+      SELECT
+        substr(c.ms, 1, 8) || '-' || substr(c.ms, 9, 4) || '-7' || substr(c.r, 1, 3) || '-'
+          || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(c.r, 4, 3) || '-' || substr(c.r, 7, 12),
+        c.entity_id, c.at, c.actor, 'set_memory', json_extract(c.data, '$.memory')
+      FROM (
+        SELECT seq, entity_id, at, actor, data, lower(hex(randomblob(9))) AS r,
+          printf('%012x', CAST((julianday(at) - 2440587.5) * 86400000 AS INTEGER)) AS ms
+        FROM changes
+        WHERE entity = 'project' AND op = 'set_memory' AND json_type(data, '$.memory') = 'text'
+          AND entity_id IN (SELECT id FROM projects)
+      ) c
+      ORDER BY c.seq;
+
+      -- Text that came from other devices or outside the log was never recorded; history starts from it as it is now.
+      INSERT INTO project_memory_versions (id, project_id, at, actor, op, memory)
+      SELECT
+        substr(p.ms, 1, 8) || '-' || substr(p.ms, 9, 4) || '-7' || substr(p.r, 1, 3) || '-'
+          || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(p.r, 4, 3) || '-' || substr(p.r, 7, 12),
+        p.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'migration', 'baseline', p.memory
+      FROM (
+        SELECT id, memory, lower(hex(randomblob(9))) AS r,
+          printf('%012x', CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) AS ms
+        FROM projects
+      ) p
+      WHERE p.memory != coalesce(
+        (SELECT v.memory FROM project_memory_versions v WHERE v.project_id = p.id ORDER BY v.seq DESC LIMIT 1), ''
+      );
+    `,
+  },
 ];

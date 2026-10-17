@@ -8,6 +8,8 @@ extension Shelf {
         case .intent(let intent): intent.label
         case .unopened: "Unopened"
         case .reminders: "Reminders"
+        case .review: "Review"
+        case .attention(let level): level == .high ? "Needs attention" : "\(level.rawValue.capitalized) attention"
         }
     }
 
@@ -17,6 +19,8 @@ extension Shelf {
         case .intent(let intent): intent.symbol
         case .unopened: "envelope.badge"
         case .reminders: "bell"
+        case .review: "eye"
+        case .attention: "exclamationmark.circle"
         }
     }
 
@@ -26,6 +30,8 @@ extension Shelf {
         case .intent(let intent): "Links you mark “\(intent.label)” collect here. New links get a guess you can change."
         case .unopened(let days): "Everything saved more than \(days) days ago has been opened at least once."
         case .reminders: "Set a reminder from any item's “Remind me” menu."
+        case .review: "Turn on “Marked for review” in an item's “Shows as” card to collect it here."
+        case .attention: "Set an item's attention to High to keep it here."
         }
     }
 }
@@ -42,10 +48,12 @@ struct ShelfView: View {
     @State private var items: [Item] = []
     @State private var error: String?
     @State private var loaded = false
+    @State private var cachedAt: Date?
 
     var body: some View {
         HearthScreen(title: shelf.title, overline: "Shelf") {
             if shelf == .reminders, !items.isEmpty, !reminders.isAllowed { NotificationPrompt() }
+            if let cachedAt { CachedBanner(savedAt: cachedAt) }
             if let error { ErrorBanner(message: error) { Task { await load() } } }
             if items.isEmpty {
                 if loaded, error == nil { EmptyStateView(symbol: shelf.symbol, title: "Nothing here", message: shelf.emptyMessage) }
@@ -63,9 +71,11 @@ struct ShelfView: View {
     }
 
     private func load() async {
-        guard let client = connection.client else { return }
+        guard connection.client != nil else { return }
         do {
-            items = try await client.items(ItemFilter(limit: 200, shelf: shelf))
+            let loaded = try await connection.load(.items(ItemFilter(limit: 200, shelf: shelf)), as: [Item].self)
+            items = loaded.value
+            cachedAt = loaded.cachedAt
             error = nil
         } catch is CancellationError {
             return
@@ -106,6 +116,23 @@ struct NotificationPrompt: View {
             }
         }
         .accessibilityIdentifier("NotificationPrompt")
+    }
+}
+
+/// What deserves a look again: review marks, high attention, and the revisit and unopened signals.
+struct SuggestionsSection: View {
+    @Environment(Router.self) private var router
+
+    var body: some View {
+        Overline("Suggestions")
+        FlowLayout(spacing: HearthSpacing.sm) {
+            ForEach(Shelf.suggestions) { shelf in
+                FilterChip(title: shelf.title, systemImage: shelf.symbol, isSelected: false) {
+                    router.open(.shelf(shelf))
+                }
+                .accessibilityIdentifier("Suggestion_\(shelf.id)")
+            }
+        }
     }
 }
 

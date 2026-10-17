@@ -17,10 +17,14 @@ final class ProjectStore {
         projects = []
     }
 
-    func load(_ client: APIClient?) async throws {
-        guard let client else { return }
-        projects = try await client.projects()
+    /// Returns when the list shown was saved, if the server couldn't be reached.
+    @discardableResult
+    func load(_ connection: Connection) async throws -> Date? {
+        guard connection.client != nil else { return nil }
+        let loaded = try await connection.load(.projects, as: [Project].self)
+        projects = loaded.value
         settings.cachedProjects = projects.map(\.ref)
+        return loaded.cachedAt
     }
 
     func name(for id: String?) -> String? {

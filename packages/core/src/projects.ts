@@ -1,6 +1,7 @@
 import { type Context, newId, oneOf, required, slugify } from './context.ts';
 import { MemoryError, invalid, notFound } from './errors.ts';
-import { PROJECT_STATUSES, type Project, type ProjectStatus } from './types.ts';
+import { clampLimit } from './items.ts';
+import { PROJECT_STATUSES, type Project, type ProjectMemoryVersion, type ProjectStatus } from './types.ts';
 
 interface ProjectRow {
   id: string;
@@ -127,9 +128,21 @@ export class ProjectService {
     return this.write(project, changes, 'update');
   }
 
-  /** Replaces the durable memory document. Every prior version stays in the change log. */
+  /** Replaces the durable memory document. Every prior version stays in its history. */
   setMemory(ref: string, memory: string): Project {
     return this.write(this.resolve(ref), { memory }, 'set_memory');
+  }
+
+  /** Newest first, with an exact total. */
+  memoryHistory(ref: string, { offset = 0, limit }: { offset?: number; limit?: number } = {}): { items: ProjectMemoryVersion[]; total: number } {
+    const project = this.resolve(ref);
+    if (!Number.isInteger(offset) || offset < 0) throw invalid('Offset must be a non-negative integer.');
+    const { total } = this.ctx.get<{ total: number }>(`SELECT count(*) AS total FROM project_memory_versions WHERE project_id = ?`, project.id)!;
+    const items = this.ctx.all<{ id: string; project_id: string; at: string; actor: string; op: string; memory: string }>(
+      `SELECT id, project_id, at, actor, op, memory FROM project_memory_versions WHERE project_id = ? ORDER BY seq DESC LIMIT ? OFFSET ?`,
+      project.id, clampLimit(limit), offset,
+    ).map((row) => ({ id: row.id, projectId: row.project_id, at: row.at, actor: row.actor, op: row.op, memory: row.memory }));
+    return { items, total };
   }
 
   private write(project: Project, changes: Record<string, string>, op: string): Project {
@@ -152,6 +165,20 @@ export class ProjectService {
     const existing = this.ctx.get<{ name: string }>(`SELECT name FROM projects WHERE slug = ?`, slug);
     if (existing) throw new MemoryError('conflict', `A project named "${existing.name}" already exists.`);
     return slug;
+  }
+}
+
+/** Called once per transaction with the projects it changed; keeps the memory text whenever it differs from the last kept. */
+export function captureMemoryVersions(ctx: Context, changed: Map<string, { op: string; actor: string }>): void {
+  for (const [id, { op, actor }] of changed) {
+    const project = ctx.get<{ memory: string }>(`SELECT memory FROM projects WHERE id = ?`, id);
+    if (!project) continue;
+    const last = ctx.get<{ memory: string }>(`SELECT memory FROM project_memory_versions WHERE project_id = ? ORDER BY seq DESC LIMIT 1`, id);
+    if ((last?.memory ?? '') === project.memory) continue;
+    ctx.run(
+      `INSERT INTO project_memory_versions (id, project_id, at, actor, op, memory) VALUES (?, ?, ?, ?, ?, ?)`,
+      newId(), id, ctx.now(), actor, op, project.memory,
+    );
   }
 }
 

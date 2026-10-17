@@ -5,9 +5,11 @@ export interface StoredPrefs {
   theme: ThemeMode;
   lan: boolean;
   shortcut: string;
+  /** Remote sync server; its token lives in the secret store. */
+  remoteUrl: string | null;
 }
 
-const DEFAULTS: StoredPrefs = { theme: 'system', lan: false, shortcut: 'CommandOrControl+Shift+Space' };
+const DEFAULTS: StoredPrefs = { theme: 'system', lan: false, shortcut: 'CommandOrControl+Shift+Space', remoteUrl: null };
 
 /** Desktop-only preferences (window chrome, network exposure). Library preferences live in core settings instead. */
 export class PrefsFile {

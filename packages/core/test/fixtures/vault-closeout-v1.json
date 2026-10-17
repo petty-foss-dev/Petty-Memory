@@ -1,0 +1,58 @@
+{
+  "about": "Petty Memory vault interoperability fixture v1. Fictional values only; generated once from docs/VAULT_CLOSEOUT_CONTRACTS.md.",
+  "passphrase": "Fictional ﬁxture passphrase 2026",
+  "note": {
+    "id": "019a0000-0000-7000-8000-00000000f001",
+    "envelope": {
+      "v": 1,
+      "kdf": {
+        "name": "pbkdf2",
+        "hash": "sha256",
+        "iterations": 600000
+      },
+      "salt": "X8unkXs6MJJD4Xyijv0cfg==",
+      "iv": "Ngtxq++gtkLiqOYa",
+      "tag": "PTF3OwPDbS9InZIibFS1Mw==",
+      "data": "yLPTb5za3P8Tx4/Rz5PfxodBYasfE+OVPDSBAK2zPZIG/6rbFUdOAC8k4XvRmUXWi2mTScquJpI1HOcw/1R4Y0s="
+    },
+    "plaintext": {
+      "title": "Fixture locker zq",
+      "body": "fictional code 12-34-56 zq"
+    }
+  },
+  "file": {
+    "itemId": "019a0000-0000-7000-8000-00000000f001",
+    "attachmentId": "019a0000-0000-7000-8000-00000000f002",
+    "aad": "petty-memory:file:v1:019a0000-0000-7000-8000-00000000f001:019a0000-0000-7000-8000-00000000f002",
+    "envelope": {
+      "v": 1,
+      "kdf": {
+        "name": "pbkdf2",
+        "hash": "sha256",
+        "iterations": 600000
+      },
+      "salt": "X8unkXs6MJJD4Xyijv0cfg==",
+      "iv": "LFzP7UI/zpZ8ukUT",
+      "tag": "CfECKu9ZpDANOCLFvhttxw==",
+      "data": "kXyOGXrBEb5Vihbe0R9d/uqTg2ih0wdErU/Qu7akWN0+eV9MfAKgl8hX1C76XbzluCh1taIyjkV4PseK2eHnS6VENObhWOWwx6Oj9e/wqggETm+NWWLwXtu0yNRE17HmhlDgdu7T6y+hSbuUMKU9AD2PLxEzLhb01twmSsdxiFf+ioVhCX5srcI+IXI5/Mu+dEiyM7hLEJ6gdjRZv4gG74r7VrZDzXoy1GyEPDEsNldS9J3NfkMd7DDm1VCoP7kgjhNc1HmEOvFke4WjQZ/Ylg6pn8mngjh7Pp5l15r5VlTh4ACtndYF4DwNkceX37N62rpGz/xssxOAe02Brzh6/xReKScsSVvUUvmNBujcWsT7cklYqA+8RE4LVibN9HgkyiGTgAWKHsFeczmmOuNaHwWiLcYI4jMe/jkaZFd8xfF9pyHB9l6j/I9mHrNVCJ2CnQpGf52HTPx71ejDVuVqLI1i4HE3nHfDqlOSNg=="
+    },
+    "storedBlobSha256": "e9583d0f7d616f97f5aab8c3b4051b0fc0c2e8d60d3290d774acc74ab55277ea",
+    "storedBlobSize": 656,
+    "filename": "Fixture receipt é zq.bin",
+    "mimeType": "application/octet-stream",
+    "metadataLength": 78,
+    "dataBase64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/2ZpY3Rpb25hbCByZWNlaXB0IHpxCg==",
+    "dataSha256": "f6bb73f771e677c61f433f9eb628a505df121e8b0b53e4635757d68b97244865"
+  },
+  "recovery": {
+    "aad": "petty-memory:recovery:v1",
+    "kit": {
+      "v": 1,
+      "kind": "petty-memory-vault-recovery",
+      "iv": "A4zMV6w0mLZmEabD",
+      "tag": "Mce87O5PlF78/gB6oXOAmw==",
+      "data": "f903n92F5J+lwyz5IWO7dSwVYNkpMdCRPbtKdMjUyT3Af7bYMjUj5u/GGYrRsrfeu+M="
+    },
+    "code": "pmr1_77VAvFE7MdsPMtajnnAtN_8LfFJSYT_VderBUWgTGR8"
+  }
+}

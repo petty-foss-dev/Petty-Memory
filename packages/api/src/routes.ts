@@ -1,4 +1,5 @@
-import { type ApiClient, type ClientScope, type EnveMemory, INTENTS, type Intent } from '@enve-memory/core';
+import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type SyncRecord } from '@enve-memory/core';
+import { type AiProvider, proposeEdit } from '@enve-memory/ai';
 import { HttpError } from './errors.ts';
 
 export interface RouteContext {
@@ -7,6 +8,9 @@ export interface RouteContext {
   params: string[];
   query: URLSearchParams;
   body: Record<string, unknown> | undefined;
+  aiProvider: () => AiProvider | null;
+  maxSyncBytes: number;
+  waitForChange: (since: number, timeout: number) => Promise<number>;
 }
 
 export interface Route {
@@ -15,6 +19,7 @@ export interface Route {
   /** null: any valid token, e.g. so a capture-only client can confirm it's connected. */
   scope: ClientScope | null;
   status?: number;
+  hostVault?: boolean;
   handle: (ctx: RouteContext) => unknown | Promise<unknown>;
 }
 
@@ -50,6 +55,18 @@ function queryLimit(query: URLSearchParams): number | undefined {
   return raw === null ? undefined : Number(raw);
 }
 
+function queryCursor(query: URLSearchParams, name = 'cursor'): number {
+  const value = Number(query.get(name) ?? '0');
+  if (!Number.isSafeInteger(value) || value < 0) throw badField(name, 'a non-negative integer');
+  return value;
+}
+
+function queryWait(query: URLSearchParams): number {
+  const value = Number(query.get('wait') ?? '0');
+  if (!Number.isInteger(value) || value < 0 || value > 25_000) throw badField('wait', 'an integer from 0 to 25000');
+  return value;
+}
+
 const queryFilter = (query: URLSearchParams) => ({
   project: query.get('project') ?? undefined,
   type: query.get('type') ?? undefined,
@@ -61,6 +78,9 @@ const queryFilter = (query: URLSearchParams) => ({
   intent: query.get('intent') ?? undefined,
   reminders: query.get('reminders') === 'true' || undefined,
   unopenedDays: query.get('unopened') === null ? undefined : Number(query.get('unopened')),
+  review: query.get('review') === null ? undefined : query.get('review') === 'true',
+  attention: query.get('attention') ?? undefined,
+  secret: query.has('secret') ? query.get('secret') === 'true' : undefined,
 });
 
 const ID = '([^/]+)';
@@ -74,6 +94,25 @@ function bool(body: RouteContext['body'], name: string): boolean | undefined {
 }
 
 const MAX_BATCH = 2000;
+
+function presentationPatch(body: RouteContext['body']): Partial<ItemPresentation> {
+  const patch: Partial<ItemPresentation> = {};
+  for (const key of ['review', 'checklist', 'hideCompleted', 'checked', 'autoOrganize'] as const) {
+    const value = bool(body, key);
+    if (value !== undefined) patch[key] = value;
+  }
+  const kind = str(body, 'kind');
+  if (kind !== undefined) {
+    if (kind !== 'text' && kind !== 'heading' && kind !== 'section') throw badField('kind', 'text, heading or section');
+    patch.kind = kind;
+  }
+  const attention = str(body, 'attention');
+  if (attention !== undefined) {
+    if (attention !== 'normal' && attention !== 'high' && attention !== 'low') throw badField('attention', 'normal, high or low');
+    patch.attention = attention;
+  }
+  return patch;
+}
 
 /** One capture: a URL becomes a bookmark (re-saving merges), anything else a note. Pin, reminder and intent apply at capture time. */
 function capture(memory: EnveMemory, body: RouteContext['body']) {
@@ -111,6 +150,33 @@ function captureNote(note: string | undefined, selection: string | undefined): s
 
 export const routes: Route[] = [
   { method: 'GET', pattern: path('/whoami'), scope: null, handle: ({ client }) => client },
+  {
+    method: 'GET', pattern: path('/capabilities'), scope: 'read',
+    handle: ({ memory }) => ({
+      api: 1, schema: memory.schemaVersion,
+      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares'],
+      maxWait: 25_000,
+    }),
+  },
+  {
+    method: 'GET', pattern: path('/changes'), scope: 'read',
+    handle: async ({ memory, query, waitForChange }) => ({
+      revision: await waitForChange(queryCursor(query, 'since'), queryWait(query)), deviceId: memory.deviceId,
+    }),
+  },
+  {
+    method: 'GET', pattern: path('/library'), scope: 'read',
+    handle: ({ memory, query }) => memory.feed.page(queryCursor(query), queryLimit(query)),
+  },
+  {
+    method: 'POST', pattern: path('/editor/actions'), scope: 'write', status: 201,
+    handle: ({ memory, body }) => {
+      if (!Array.isArray(body?.commands)) throw badField('commands', 'an array');
+      return memory.editor.apply(body.commands as EditorCommand[], { id: str(body, 'id') });
+    },
+  },
+  { method: 'POST', pattern: path('/editor/actions/:id/undo'), scope: 'write', handle: ({ memory, params }) => memory.editor.undo(params[0]!) },
+  { method: 'POST', pattern: path('/editor/actions/:id/redo'), scope: 'write', handle: ({ memory, params }) => memory.editor.redo(params[0]!) },
 
   {
     method: 'GET', pattern: path('/search'), scope: 'read',
@@ -122,10 +188,162 @@ export const routes: Route[] = [
     handle: ({ memory, query }) => memory.items.list(queryFilter(query), queryLimit(query)),
   },
   {
+    method: 'GET', pattern: path('/outline'), scope: 'read',
+    handle: ({ memory, query }) => memory.outline.children(query.get('parent'), {
+      offset: queryOffset(query), limit: queryLimit(query), includeArchived: query.get('archived') === 'true',
+    }),
+  },
+  {
+    method: 'GET', pattern: path('/outline/:id'), scope: 'read',
+    handle: ({ memory, params }) => memory.outline.get(params[0]!),
+  },
+  {
+    method: 'GET', pattern: path('/outline/:id/ancestors'), scope: 'read',
+    handle: ({ memory, params }) => memory.outline.ancestors(params[0]!),
+  },
+  {
+    method: 'POST', pattern: path('/outline'), scope: 'capture', status: 201,
+    handle: ({ memory, body }) => memory.outline.createNote({
+      id: str(body, 'id'),
+      parentId: nullableStr(body, 'parentId') ?? null, title: str(body, 'title'), body: str(body, 'body'),
+      project: str(body, 'project'), tags: strList(body, 'tags'),
+    }),
+  },
+  {
+    method: 'PUT', pattern: path('/outline/:id/parent'), scope: 'write',
+    handle: ({ memory, params, body }) => {
+      const parentId = nullableStr(body, 'parentId');
+      if (parentId === undefined) throw badField('parentId', 'an item id or null for the root');
+      return memory.outline.move(params[0]!, { parentId, beforeId: nullableStr(body, 'beforeId') });
+    },
+  },
+  {
     method: 'GET', pattern: path('/lookup'), scope: 'read',
     handle: ({ memory, query }) => ({ item: memory.items.findByUrl(query.get('url') ?? '') }),
   },
   { method: 'GET', pattern: path('/items/:id'), scope: 'read', handle: ({ memory, params }) => memory.items.get(params[0]!) },
+  { method: 'GET', pattern: path('/items/:id/presentation'), scope: 'read', handle: ({ memory, params }) => memory.presentation.get(params[0]!) },
+  {
+    method: 'PATCH', pattern: path('/items/:id/presentation'), scope: 'write',
+    handle: ({ memory, params, body }) => memory.presentation.update(params[0]!, presentationPatch(body)),
+  },
+  {
+    method: 'POST', pattern: path('/items/:id/check'), scope: 'write',
+    handle: ({ memory, params, body }) => {
+      const checked = bool(body, 'checked');
+      if (checked === undefined) throw badField('checked', 'true or false');
+      return memory.presentation.toggle(params[0]!, checked);
+    },
+  },
+  { method: 'POST', pattern: path('/items/:id/checklist/reset'), scope: 'write', handle: ({ memory, params }) => memory.presentation.reset(params[0]!) },
+  { method: 'GET', pattern: path('/items/:id/checklist'), scope: 'read', handle: ({ memory, params }) => memory.presentation.progress(params[0]!) },
+  {
+    method: 'GET', pattern: path('/items/:id/versions'), scope: 'read',
+    handle: ({ memory, params, query }) => memory.versions.list(params[0]!, { offset: queryOffset(query), limit: queryLimit(query) }),
+  },
+  { method: 'GET', pattern: path('/versions/:id'), scope: 'read', handle: ({ memory, params }) => memory.versions.get(params[0]!) },
+  { method: 'POST', pattern: path('/versions/:id/restore'), scope: 'write', handle: ({ memory, params }) => memory.versions.restore(params[0]!) },
+  { method: 'GET', pattern: path('/items/:id/references'), scope: 'read', handle: ({ memory, params }) => memory.references.list(params[0]!) },
+  {
+    method: 'POST', pattern: path('/items/:id/references'), scope: 'write',
+    handle: ({ memory, params, body }) => memory.references.insert(params[0]!, str(body, 'toId') ?? '', str(body, 'label')),
+  },
+  {
+    method: 'POST', pattern: path('/items/:id/relations'), scope: 'write',
+    handle: ({ memory, params, body }) => memory.items.relate(params[0]!, str(body, 'toId') ?? '', str(body, 'kind') ?? ''),
+  },
+  {
+    method: 'DELETE', pattern: path('/items/:id/relations'), scope: 'write',
+    handle: ({ memory, params, body }) => memory.items.unrelate(params[0]!, str(body, 'toId') ?? '', str(body, 'kind') ?? ''),
+  },
+  {
+    method: 'POST', pattern: path('/ai/edit'), scope: 'write',
+    handle: ({ memory, body, aiProvider }) => {
+      const provider = aiProvider();
+      if (!provider) throw new HttpError(400, 'invalid', 'Configure an AI provider on the host first with `petty-memory ai use`.');
+      return proposeEdit(memory, provider, { rootId: str(body, 'rootId') ?? '', instruction: str(body, 'instruction') ?? '' });
+    },
+  },
+  {
+    method: 'POST', pattern: path('/ai/apply'), scope: 'write',
+    handle: ({ memory, body }) => memory.edits.apply(body?.proposal as EditProposal),
+  },
+  {
+    method: 'POST', pattern: path('/ai/undo'), scope: 'write',
+    handle: ({ memory, body }) => memory.edits.undo(body?.receipt as Parameters<EnveMemory['edits']['undo']>[0]),
+  },
+  { method: 'GET', pattern: path('/vault'), scope: 'secrets', handle: ({ memory }) => memory.vault.state() },
+  { method: 'POST', pattern: path('/vault/setup'), scope: 'secrets', hostVault: true, handle: ({ memory, body }) => memory.vault.setup(str(body, 'passphrase') ?? '') },
+  { method: 'POST', pattern: path('/vault/unlock'), scope: 'secrets', hostVault: true, handle: ({ memory, body }) => memory.vault.unlock(str(body, 'passphrase') ?? '') },
+  { method: 'POST', pattern: path('/vault/lock'), scope: 'secrets', hostVault: true, handle: ({ memory }) => memory.vault.lock() },
+  {
+    method: 'POST', pattern: path('/vault/sealed-items'), scope: 'secrets', status: 201,
+    handle: ({ memory, body }) => memory.vault.createSealed({
+      id: str(body, 'id') ?? '', envelope: body?.envelope, project: str(body, 'project'), tags: strList(body, 'tags'), parentId: nullableStr(body, 'parentId'),
+    }),
+  },
+  {
+    method: 'PATCH', pattern: path('/vault/sealed-items/:id'), scope: 'secrets',
+    handle: ({ memory, params, body }) => memory.vault.updateSealed(params[0]!, { envelope: body?.envelope }),
+  },
+  {
+    method: 'POST', pattern: path('/vault/items'), scope: 'secrets', status: 201, hostVault: true,
+    handle: ({ memory, body }) => memory.vault.create({
+      title: str(body, 'title') ?? '', body: str(body, 'body') ?? '', project: str(body, 'project'), tags: strList(body, 'tags'), parentId: nullableStr(body, 'parentId'),
+    }),
+  },
+  { method: 'GET', pattern: path('/vault/items/:id'), scope: 'secrets', hostVault: true, handle: ({ memory, params }) => memory.vault.read(params[0]!) },
+  {
+    method: 'PATCH', pattern: path('/vault/items/:id'), scope: 'secrets', hostVault: true,
+    handle: ({ memory, params, body }) => memory.vault.update(params[0]!, { title: str(body, 'title') ?? '', body: str(body, 'body') ?? '' }),
+  },
+  {
+    method: 'PUT', pattern: path('/vault/items/:id/attachments/:id'), scope: 'secrets', status: 201,
+    handle: ({ memory, params, body }) => memory.vault.attachSealed(params[0]!, params[1]!, body),
+  },
+  {
+    method: 'GET', pattern: path('/vault/items/:id/attachments/:id'), scope: 'secrets',
+    handle: ({ memory, params }) => memory.vault.sealedAttachment(params[0]!, params[1]!),
+  },
+  {
+    method: 'DELETE', pattern: path('/vault/items/:id/attachments/:id'), scope: 'secrets',
+    handle: ({ memory, params }) => memory.vault.removeFile(params[0]!, params[1]!),
+  },
+  {
+    method: 'POST', pattern: path('/vault/versions/:id/restore'), scope: 'secrets',
+    handle: ({ memory, params }) => memory.vault.restoreVersion(params[0]!),
+  },
+  { method: 'GET', pattern: path('/shares'), scope: 'write', handle: ({ memory }) => memory.shares.list() },
+  {
+    method: 'POST', pattern: path('/shares'), scope: 'write', status: 201,
+    handle: ({ memory, body }) => memory.shares.create(str(body, 'rootId') ?? '', {
+      excludedIds: strList(body, 'excludedIds'), expiresAt: nullableStr(body, 'expiresAt'),
+    }),
+  },
+  { method: 'POST', pattern: path('/shares/:id/revoke'), scope: 'write', handle: ({ memory, params }) => memory.shares.revoke(params[0]!) },
+  {
+    method: 'GET', pattern: path('/sync'), scope: 'sync',
+    handle: async ({ memory, query, waitForChange }) => {
+      const cursor = queryCursor(query);
+      const wait = queryWait(query);
+      const revision = memory.feed.revision;
+      const page = memory.sync.exportChanges(cursor, queryLimit(query));
+      if (page.records.length || page.reset || !wait) return page;
+      await waitForChange(revision, wait);
+      return memory.sync.exportChanges(cursor, queryLimit(query));
+    },
+  },
+  {
+    method: 'GET', pattern: path('/sync/capabilities'), scope: 'sync',
+    handle: ({ maxSyncBytes }) => ({ protocol: 1, features: ['wait', 'cursor-reset', 'blobs'], maxWait: 25_000, maxBodyBytes: maxSyncBytes }),
+  },
+  {
+    method: 'POST', pattern: path('/sync'), scope: 'sync',
+    handle: ({ memory, body }) => {
+      if (!Array.isArray(body?.records)) throw badField('records', 'an array');
+      return memory.sync.applyChanges(body.records as SyncRecord[]);
+    },
+  },
   {
     method: 'POST', pattern: path('/items'), scope: 'capture', status: 201,
     handle: ({ memory, body }) => {
@@ -150,6 +368,7 @@ export const routes: Route[] = [
     handle: ({ memory, params, body }) =>
       memory.items.update(params[0]!, {
         title: str(body, 'title'), body: str(body, 'body'), url: nullableStr(body, 'url'), project: nullableStr(body, 'project'),
+        baseTitle: str(body, 'baseTitle'), baseBody: str(body, 'baseBody'),
       }),
   },
   {
@@ -254,6 +473,10 @@ export const routes: Route[] = [
   {
     method: 'PUT', pattern: path('/projects/:id/memory'), scope: 'write',
     handle: ({ memory, params, body }) => memory.projects.setMemory(params[0]!, str(body, 'memory') ?? ''),
+  },
+  {
+    method: 'GET', pattern: path('/projects/:id/memory/versions'), scope: 'read',
+    handle: ({ memory, params, query }) => memory.projects.memoryHistory(params[0]!, { offset: queryOffset(query), limit: queryLimit(query) }),
   },
   { method: 'GET', pattern: path('/projects/:id/decisions'), scope: 'read', handle: ({ memory, params }) => memory.decisions.list(params[0]!) },
   {

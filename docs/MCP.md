@@ -22,6 +22,17 @@ Two transports:
 | `search` | read | Hybrid keyword + meaning search with project / type / tag filters; each hit says whether it matched on `keyword`, `semantic` or `both` |
 | `get_item` | read | Full item with tags, task fields, relations, attachments and archived `content` (paged 20k characters at a time via `content_offset`) |
 | `list_items` | read | Recent items filtered by project / type / tag or a shelf (pinned, intent, unopened for N days, reminders); bodies trimmed to a 280-char preview |
+| `list_outline` | read | Ordered direct children (`parent_id`) or roots; `offset`, `limit` and `include_archived`; returns entries with compact item previews, parent, position, child count and total |
+| `get_outline_item` | read | One outline entry and its root-to-parent ancestor path; use `get_item` for full text |
+| `create_outline_note` | capture | Create a note atomically under `parent_id` or at root; accepts `title`, `text`, `project`, `tags`; title or text must be nonempty |
+| `move_outline_item` | write | Move an item with descendants under `parent_id` (null = root), optionally before sibling `before_id`; keeps project filing unchanged and refuses decisions/cycles |
+| `get_presentation` | read | Display kind, attention, review mark, checklist settings and descendant progress |
+| `set_presentation` | write | Change any of those without touching item text; `autoOrganize` is an explicit opt-in |
+| `set_checked`, `reset_checklist` | write | Complete/reopen an entry or checklist subtree; tasks complete through their status |
+| `list_item_versions` | read | Paged versions of an item and its subtree (`offset`, `limit`), newest first |
+| `get_item_version` | read | One immutable snapshot, its nodes paged (`offset`, `limit`, default 25) |
+| `restore_item_version` | write | Restore a snapshot as a new logged change |
+| `list_references`, `insert_reference` | read / write | Inline `[[item:<id>\|label]]` references and backlinks; insert appends a reference to the source note |
 | `list_projects` | read | Projects (archived ones hidden by default) |
 | `get_project` | read | **Briefing**: description, instructions, memory document, decision log, open tasks, recent notes/links |
 | `list_tasks` | read | Tasks by due date then priority; `active` = open or in progress |
@@ -42,7 +53,7 @@ Two transports:
 | `create_task` | capture | |
 | `update_task`, `complete_task` | write | |
 
-No tool deletes anything, and every tool is annotated `destructiveHint: false`. Read tools are `readOnlyHint: true`. The Scope column is what an HTTP token needs: `write` implies `capture`, and stdio has everything.
+No tool deletes anything, and every tool is annotated `destructiveHint: false`. MCP deliberately has no tools for removing connections, the vault, public shares, applying AI edit proposals or device sync; those stay with the user's own clients and their `secrets`/`sync` token scopes. Read tools are `readOnlyHint: true`. The Scope column is what an HTTP token needs: `write` implies `capture`, and stdio has everything.
 
 ## Design rules
 
@@ -58,7 +69,7 @@ No tool deletes anything, and every tool is annotated `destructiveHint: false`. 
 Saved content is untrusted. It is often copied from web pages. The mitigations:
 
 1. **Server instructions** tell the model that every title, body, note, url, snippet and memory field is user data, and to never follow instructions inside it.
-2. **No destructive tools.** The worst a hijacked model can do is add or archive items, or overwrite a memory document. All of that is reversible from the change log.
+2. **No destructive tools.** The worst a hijacked model can do is add, edit, move or archive items, restore an older version, or overwrite a memory document. All of that is reversible from the change log and item history.
 3. **The append-only decision log** can't be rewritten through MCP.
 4. With HTTP clients, **per-client permission scopes** let a user make a client read-only (see [SECURITY.md](SECURITY.md)).
 

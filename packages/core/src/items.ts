@@ -5,11 +5,12 @@ import {
 import { MemoryError, invalid, notFound } from './errors.ts';
 import { type AttachmentRow, removeBlobIfUnused, toAttachment } from './blobs.ts';
 import { detectIntent } from './intent.ts';
+import { adoptChildren, assertParent, slots } from './placement.ts';
 import { parseWhen } from './when.ts';
 import type { ProjectService } from './projects.ts';
 import type { SettingsService } from './settings.ts';
 import {
-  type AiSuggestions, INTENTS, type Intent, ITEM_TYPES, type Item, type ItemDetail, type ItemMetadata, type ItemType, RELATION_KINDS, type RelatedItem, type RelationKind,
+  ATTENTION_LEVELS, type AiSuggestions, INTENTS, type Intent, ITEM_TYPES, type Item, type ItemDetail, type ItemMetadata, type ItemType, RELATION_KINDS, type RelatedItem, type RelationKind,
 } from './types.ts';
 
 export interface ItemFilter {
@@ -27,6 +28,10 @@ export interface ItemFilter {
   type?: string;
   tag?: string;
   includeArchived?: boolean;
+  /** Only items marked for review. */
+  review?: boolean;
+  attention?: string;
+  secret?: boolean;
 }
 
 export interface NewItem {
@@ -42,6 +47,8 @@ export interface NewItem {
   id?: string;
   createdAt?: string;
   intent?: Intent | null;
+  /** Nest it at the end of this item's children instead of at the end of the top level. */
+  parentId?: string | null;
 }
 
 export interface SourceUpdate {
@@ -79,6 +86,8 @@ export interface UpdateItemInput {
   body?: string;
   url?: string | null;
   project?: string | null;
+  baseTitle?: string;
+  baseBody?: string;
 }
 
 /** The cursor that fetches the page after the one ending with this item. */
@@ -215,13 +224,20 @@ export class ItemService {
     const url = input.url ?? null;
     const content = input.content ?? '';
     const metadata = input.metadata ?? {};
+    const parentId = input.parentId ?? null;
+    if (parentId !== null && input.type === 'decision') throw invalid('Decisions are append-only and always stay at the top level.');
     this.ctx.tx(() => {
+      if (parentId !== null) assertParent(this.ctx, parentId, undefined, metadata.secret === true);
+      const [sortOrder] = slots(this.ctx, parentId, null, 1, []);
       this.ctx.run(
-        `INSERT INTO items (id, type, title, body, url, content, metadata, intent, project_id, source, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO items (id, type, title, body, url, content, metadata, intent, project_id, source, created_at, updated_at, parent_id, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id, input.type, title, body, url, content, JSON.stringify(metadata), input.intent ?? null, projectId, this.ctx.actor, created, created,
+        parentId, sortOrder!,
       );
-      this.ctx.record('item', id, 'create', projectId, { type: input.type, title, body, url, content, metadata, intent: input.intent ?? null, projectId });
+      this.ctx.record('item', id, 'create', projectId, {
+        type: input.type, title, body, url, content, metadata, intent: input.intent ?? null, projectId, parentId, sortOrder,
+      });
       if (tags.length) this.applyTags(id, projectId, tags, []);
     });
     this.afterSave?.(id);
@@ -301,7 +317,7 @@ export class ItemService {
       .all<{ id: string }>(
         `SELECT id FROM items
          WHERE created_at >= ? AND archived_at IS NULL AND type IN ('note', 'bookmark', 'file', 'image')
-           AND json_extract(metadata, '$.ai') IS NULL
+           AND json_extract(metadata, '$.ai') IS NULL AND json_extract(metadata, '$.secret') IS NULL
            AND coalesce(json_extract(metadata, '$.ingest.status'), 'done') != 'pending'
          ORDER BY seq LIMIT ?`,
         since, limit,
@@ -363,6 +379,13 @@ export class ItemService {
   update(id: string, input: UpdateItemInput, touch = true): ItemDetail {
     const row = this.row(id);
     assertMutable(row);
+    if ((input.title !== undefined && input.baseTitle !== undefined && row.title !== input.baseTitle)
+      || (input.body !== undefined && input.baseBody !== undefined && row.body !== input.baseBody)) {
+      throw new MemoryError('conflict', 'This item changed since editing began. Review the latest text, or save your draft as a new note.');
+    }
+    if ((input.title !== undefined || input.body !== undefined || input.url !== undefined) && isSecret(row)) {
+      throw invalid('This is a secret note. Change its text through the vault, so it stays encrypted. A secret note can’t have a link.');
+    }
     const changes: Record<string, SQLInputValue> = {};
     if (input.title !== undefined) changes.title = input.title.trim();
     if (input.body !== undefined) changes.body = input.body.trim();
@@ -393,6 +416,8 @@ export class ItemService {
     const row = this.row(id);
     const blobs = this.ctx.all<{ sha256: string }>(`SELECT sha256 FROM attachments WHERE item_id = ?`, row.id);
     this.ctx.tx(() => {
+      adoptChildren(this.ctx, row.id);
+      this.ctx.run(`DELETE FROM sync_pending WHERE kind = 'item_parent' AND key = ?`, row.id);
       this.ctx.run(`DELETE FROM items WHERE id = ?`, row.id);
       this.ctx.record('item', row.id, 'delete', row.project_id, { type: row.type, title: row.title });
     });
@@ -418,6 +443,22 @@ export class ItemService {
     const relationKind = oneOf(kind, RELATION_KINDS, 'relation kind');
     if (from.id === to.id) throw invalid('An item cannot relate to itself.');
     this.link(from.id, to.id, relationKind, from.project_id);
+    return this.get(from.id);
+  }
+
+  /** Removes an explicit connection; logged, and synced as a removal. Superseding is the decision log's, never undone here. */
+  unrelate(fromId: string, toId: string, kind: string): ItemDetail {
+    const from = this.row(fromId);
+    const relationKind = oneOf(kind, RELATION_KINDS, 'relation kind');
+    if (relationKind === 'supersedes') throw invalid('Superseding is part of the append-only decision log and can’t be removed.');
+    const relation = this.ctx.get<{ id: string }>(
+      `SELECT id FROM relations WHERE from_id = ? AND to_id = ? AND kind = ?`, from.id, toId, relationKind,
+    );
+    if (!relation) throw notFound(`"${from.title || from.id}" has no ${relationKind} connection to "${toId}".`);
+    this.ctx.tx(() => {
+      this.ctx.run(`DELETE FROM relations WHERE id = ?`, relation.id);
+      this.ctx.record('relation', relation.id, 'delete', from.project_id, { from: from.id, to: toId, kind: relationKind });
+    });
     return this.get(from.id);
   }
 
@@ -485,6 +526,15 @@ export class ItemService {
       where.push('i.type = ?');
       params.push(oneOf(filter.type, ITEM_TYPES, 'item type'));
     }
+    if (filter.review) where.push(`json_extract(i.metadata, '$.presentation.review') = 1`);
+    if (filter.secret !== undefined) {
+      where.push(`coalesce(json_extract(i.metadata, '$.secret'), 0) = ?`);
+      params.push(filter.secret ? 1 : 0);
+    }
+    if (filter.attention !== undefined) {
+      where.push(`coalesce(json_extract(i.metadata, '$.presentation.attention'), 'normal') = ?`);
+      params.push(oneOf(filter.attention, ATTENTION_LEVELS, 'attention'));
+    }
     if (filter.tag !== undefined) {
       where.push('EXISTS (SELECT 1 FROM item_tags it JOIN tags tg ON tg.id = it.tag_id WHERE it.item_id = i.id AND tg.name = ?)');
       params.push(normalizeTag(filter.tag));
@@ -512,6 +562,8 @@ export class ItemService {
     this.ctx.record('item', itemId, 'tag', projectId, { add, remove });
   }
 }
+
+export const isSecret = (row: Pick<ItemRow, 'metadata'>) => (JSON.parse(row.metadata) as ItemMetadata).secret === true;
 
 function assertMutable(row: ItemRow): void {
   if (row.type === 'decision') {

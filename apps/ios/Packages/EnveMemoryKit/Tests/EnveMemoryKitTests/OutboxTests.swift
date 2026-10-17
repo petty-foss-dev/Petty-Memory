@@ -92,6 +92,16 @@ final class TestClock: @unchecked Sendable {
         #expect(await outbox.entries().isEmpty)
     }
 
+    /// A multi-file share or a burst of offline edits enqueues within the same millisecond.
+    @Test func enqueuesWithinOneMillisecondKeepTheirOrder() async throws {
+        let outbox = self.outbox
+        let titles = (1...6).map { "edit \($0)" }
+        for title in titles { try await outbox.enqueue(note(title), kind: .note, title: title) }
+        let entries = await Outbox(directory: directory).entries()
+        #expect(entries.map(\.title) == titles)
+        #expect(Set(entries.map(\.createdAt)).count == titles.count)
+    }
+
     @Test func enqueueKeepsTheKeyOfADirectAttempt() async throws {
         let endpoint = try note("lost response")
         let entry = try await outbox.enqueue(endpoint, kind: .note, title: "x")

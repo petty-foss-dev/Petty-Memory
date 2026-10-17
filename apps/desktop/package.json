@@ -32,6 +32,7 @@
     "@enve-memory/api": "0.1.0",
     "@enve-memory/cli": "0.1.0",
     "@enve-memory/core": "0.1.0",
+    "@enve-memory/editor": "0.1.0",
     "@enve-memory/embeddings": "0.1.0",
     "@enve-memory/importers": "0.1.0",
     "@enve-memory/ingestion": "0.1.0",

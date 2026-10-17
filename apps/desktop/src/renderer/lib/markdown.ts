@@ -10,7 +10,11 @@ const INLINE_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp|avif);base64,/i;
 export interface RenderOptions {
   /** Resolves relative links in archived pages against the page they came from. */
   baseUrl?: string | null;
+  /** Current titles of referenced items, shown in place of the label saved with the reference. */
+  titles?: ReadonlyMap<string, string>;
 }
+
+const ITEM_REFERENCE = /^\[\[item:([0-9a-fA-F-]{36})(?:\|([^\]\n]*))?\]\]/;
 
 /**
  * Markdown → HTML for text we don't control (archived pages, notes written by agents). Raw HTML is shown as text,
@@ -46,6 +50,23 @@ export function createMarkdown(window: WindowLike) {
     const marked = new Marked({
       gfm: true,
       async: false,
+      // `[[item:UUID|label]]` becomes an in-app link with no href, so nothing but the app's own navigation can follow it.
+      extensions: [{
+        name: 'itemReference',
+        level: 'inline',
+        start: (src: string) => {
+          const at = src.indexOf('[[item:');
+          return at < 0 ? undefined : at;
+        },
+        tokenizer: (src: string) => {
+          const match = ITEM_REFERENCE.exec(src);
+          return match ? { type: 'itemReference', raw: match[0], id: match[1]!.toLowerCase(), label: match[2] ?? '' } : undefined;
+        },
+        renderer: (token) => {
+          const label = options.titles?.get(token.id as string) || (token.label as string) || 'Linked item';
+          return `<a class="item-ref" data-item="${escapeHtml(token.id as string)}">${escapeHtml(label)}</a>`;
+        },
+      }],
       walkTokens: (token) => {
         if ((token.type === 'link' || token.type === 'image') && base) {
           try {

@@ -11,8 +11,14 @@ final class OutboxService {
         case failed(Error)
     }
 
-    private(set) var entries: [OutboxEntry] = []
+    private(set) var entries: [OutboxEntry] = [] {
+        didSet { pending = PendingEdits(entries) }
+    }
     private(set) var isFlushing = false
+    /// Sent writes worth reporting, such as a restore that couldn't bring every file back. Kept until dismissed.
+    private(set) var notices: [OutboxNotice] = []
+    /// Queued edits, so screens can show them on top of the last loaded or cached state.
+    private(set) var pending = PendingEdits()
 
     private let outbox: Outbox
     private let connection: Connection
@@ -26,11 +32,19 @@ final class OutboxService {
 
     func reload() async {
         entries = await outbox.entries()
+        notices = await outbox.notices()
     }
 
-    /// `refresh: false` for signals (like "opened") that shouldn't make screens reload.
+    func dismiss(_ notice: OutboxNotice) async {
+        await outbox.dismissNotice(notice.id)
+        await reload()
+    }
+
+    /// `refresh: false` for signals (like "opened") that shouldn't make screens reload. While earlier writes are still
+    /// waiting, a new one queues behind them, since it may build on them (a move of a note created offline).
     func submit(_ endpoint: Endpoint, kind: OutboxEntry.Kind, title: String, file: URL? = nil, refresh: Bool = true) async -> Outcome {
-        if let client = connection.client {
+        await reload()
+        if let client = connection.client, endpoint.isOnlineOnly || !entries.contains(where: { !$0.needsAttention }) {
             do {
                 let data = try await client.data(for: endpoint, uploadingFile: file)
                 if refresh { connection.didWrite() }
@@ -44,10 +58,18 @@ final class OutboxService {
         do {
             let entry = try await outbox.enqueue(endpoint, kind: kind, title: title, attachment: file)
             await reload()
+            if connection.isOnline { Task { await flush(ignoringBackoff: false) } }
             return .queued(entry)
         } catch {
             return .failed(error)
         }
+    }
+
+    /// Takes back an entry before it's sent; false once it's on its way.
+    func withdraw(_ id: UUID) async -> Bool {
+        let withdrawn = await outbox.withdraw(id)
+        await reload()
+        return withdrawn
     }
 
     @discardableResult

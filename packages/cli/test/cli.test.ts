@@ -42,6 +42,131 @@ test('capture, organize and find from the command line', () => {
   assert.match(cli(home, ['project', 'show', 'garage']).stdout, /## Instructions\nOffline only\.[\s\S]*## Memory\n# Goal/);
 });
 
+test('outline commands create, navigate, reorder and move persistent nested notes', () => {
+  const home = tempHome();
+  const root = json(home, ['outline', 'add', 'Japan']);
+  const packing = json(home, ['outline', 'add', 'Packing', '--parent', root.item.id, '--body', 'Travel essentials']);
+  const passport = json(home, ['outline', 'add', 'Passport', '--parent', packing.item.id]);
+  const bookings = json(home, ['outline', 'add', 'Bookings', '--parent', root.item.id]);
+  const children = json(home, ['outline', root.item.id]);
+  assert.equal(children.total, 2);
+  assert.deepEqual(children.items.map((entry: { item: { id: string } }) => entry.item.id), [packing.item.id, bookings.item.id]);
+  assert.equal(children.items[0].childCount, 1);
+  assert.equal(json(home, ['show', packing.item.id]).body, 'Travel essentials');
+  json(home, ['outline', 'move', bookings.item.id, '--parent', root.item.id, '--before', packing.item.id]);
+  assert.equal(json(home, ['outline', root.item.id, '--limit', '1']).items[0].item.id, bookings.item.id);
+  assert.equal(json(home, ['outline', root.item.id, '--limit', '1', '--offset', '1']).items[0].item.id, packing.item.id);
+  assert.deepEqual(json(home, ['outline', 'show', passport.item.id]).ancestors.map((item: { id: string }) => item.id), [root.item.id, packing.item.id]);
+  assert.equal(cli(home, ['outline', 'move', root.item.id, '--parent', passport.item.id]).code, 1);
+  assert.equal(cli(home, ['outline', 'move', packing.item.id]).code, 2);
+  assert.equal(cli(home, ['outline', 'move', packing.item.id, '--root', '--parent', root.item.id]).code, 2);
+  assert.equal(cli(home, ['outline', root.item.id, '--offset=-1']).code, 1);
+  json(home, ['outline', 'move', packing.item.id, '--root']);
+  assert.equal(json(home, ['outline', 'show', packing.item.id]).parentId, null);
+  assert.equal(json(home, ['outline', 'show', passport.item.id]).parentId, packing.item.id);
+  assert.match(cli(home, ['outline', 'show', passport.item.id]).stdout, /Packing \/ Passport/);
+  assert.match(cli(home, ['outline', '--limit', '1']).stdout, /continue with --offset 1/);
+});
+
+test('presentation, checklist, references and history commands work on a persistent library', () => {
+  const home = tempHome();
+  const list = json(home, ['outline', 'add', 'Packing']);
+  const socks = json(home, ['outline', 'add', 'Socks', '--parent', list.item.id]);
+  json(home, ['outline', 'add', 'Hat', '--parent', list.item.id]);
+  const patched = cli(home, ['presentation', list.item.id, '--set', '-', '--json'], JSON.stringify({ checklist: true, review: true }));
+  assert.equal(patched.code, 0, patched.stderr);
+  assert.equal(JSON.parse(patched.stdout).checklist, true);
+  assert.equal(json(home, ['presentation', list.item.id]).review, true);
+  assert.deepEqual(json(home, ['list', '--review']).map((item: { id: string }) => item.id), [list.item.id]);
+
+  json(home, ['check', socks.item.id]);
+  assert.match(cli(home, ['checklist', list.item.id]).stdout, /^1 of 2 complete\.$/);
+  json(home, ['check', list.item.id]);
+  assert.deepEqual(json(home, ['checklist', list.item.id]), { done: 2, total: 2 });
+  assert.match(cli(home, ['checklist', list.item.id, 'reset']).stdout, /^Reset 3 entries\.$/);
+  json(home, ['uncheck', list.item.id]);
+  assert.equal(cli(home, ['checklist', list.item.id, 'bogus']).code, 2);
+
+  const passport = json(home, ['note', 'Passport', 'in', 'the', 'drawer']);
+  const referenced = json(home, ['reference', socks.item.id, passport.id, '--title', 'ID']);
+  assert.equal(referenced.body, `[[item:${passport.id}|ID]]`);
+  assert.deepEqual(json(home, ['references', passport.id]).incoming.map((r: { id: string }) => r.id), [socks.item.id]);
+
+  const history = json(home, ['history', socks.item.id]);
+  assert.ok(history.total >= 2);
+  const original = history.items.at(-1);
+  assert.equal(json(home, ['history', 'show', original.id]).snapshot.items[0].item.body, '');
+  assert.match(cli(home, ['history', 'restore', original.id]).stdout, /^Restored 1 items as a new change\.$/);
+  assert.equal(json(home, ['show', socks.item.id]).body, '');
+  assert.deepEqual(json(home, ['references', passport.id]).incoming, []);
+});
+
+test('editor journal survives separate CLI processes and protects newer text', () => {
+  const home = tempHome();
+  const note = json(home, ['outline', 'add', 'Travel', '--body', 'Socks and a hat']);
+  const split = json(home, ['editor', 'split', note.item.id, 'body', '5']);
+  const nextId = split.createdIds[0];
+  assert.equal(json(home, ['show', nextId]).body.trim(), 'and a hat');
+  json(home, ['editor', 'undo', split.actionId]);
+  assert.equal(json(home, ['show', note.item.id]).body, 'Socks and a hat');
+  assert.ok(json(home, ['show', nextId]).archivedAt);
+  json(home, ['editor', 'redo', split.actionId]);
+  const merged = json(home, ['editor', 'merge', nextId, note.item.id]);
+  assert.match(json(home, ['show', note.item.id]).body, /Socks\n\n/);
+  json(home, ['editor', 'undo', merged.actionId]);
+  assert.equal(json(home, ['show', nextId]).archivedAt, null);
+  const applied = cli(home, ['editor', 'apply', '-', '--json'], JSON.stringify([
+    { op: 'update', id: nextId, body: 'Notebook', baseBody: json(home, ['show', nextId]).body },
+    { op: 'presentation', id: nextId, patch: { review: true } },
+  ]));
+  assert.equal(applied.code, 0, applied.stderr);
+  assert.equal(json(home, ['show', nextId]).body, 'Notebook');
+  assert.equal(cli(home, ['editor', 'undo', split.actionId]).code, 1);
+  assert.equal(json(home, ['show', nextId]).body, 'Notebook');
+});
+
+test('project memory history pages across process restarts', () => {
+  const home = tempHome();
+  json(home, ['project', 'new', 'History']);
+  for (const memory of ['First draft', 'Second draft', 'Third draft']) {
+    assert.equal(cli(home, ['project', 'memory', 'history', '--set', '-'], memory).code, 0);
+  }
+  const page = json(home, ['project', 'history', 'history', '--limit', '1']);
+  assert.equal(page.items[0].memory, 'Third draft');
+  assert.ok(page.total >= 3);
+  assert.equal(json(home, ['project', 'history', 'history', '--limit', '1', '--offset', '2']).items[0].memory, 'First draft');
+});
+
+test('share, client scope and remote sync commands', () => {
+  const home = tempHome();
+  const root = json(home, ['outline', 'add', 'Recipes']);
+  const hidden = json(home, ['outline', 'add', 'Secret sauce', '--parent', root.item.id]);
+  const created = json(home, ['shares', 'create', root.item.id, '--exclude', hidden.item.id]);
+  assert.match(created.token, /^ps_/);
+  assert.deepEqual(created.share.excludedIds, [hidden.item.id]);
+  assert.match(cli(home, ['shares', 'create', root.item.id]).stdout, /shown once\): ps_\S+\nOpen \/s\/ps_/);
+  const listed = json(home, ['shares']);
+  assert.equal(listed.length, 2);
+  assert.equal(JSON.stringify(listed).includes(created.token), false);
+  assert.ok(json(home, ['shares', 'revoke', created.share.id]).revokedAt);
+  assert.match(cli(home, ['shares']).stdout, new RegExp(`${created.share.id}  ${root.item.id}  revoked`));
+  assert.equal(cli(home, ['shares', 'bogus']).code, 2);
+
+  assert.deepEqual(json(home, ['clients', 'add', 'laptop', '--scope', 'sync']).client.scopes, ['sync']);
+  assert.deepEqual(json(home, ['clients', 'pair', 'phone']).client.scopes.sort(), ['read', 'write']);
+  assert.match(cli(home, ['--help']).stdout, /sync remote <server-url>.*PETTY_MEMORY_SYNC_TOKEN/);
+
+  const { PETTY_MEMORY_SYNC_TOKEN: _, ...env } = process.env;
+  const remote = (extra: Record<string, string>, url: string) =>
+    spawnSync(process.execPath, [MAIN, '--home', home, 'sync', 'remote', url], { encoding: 'utf8', env: { ...env, ...extra } });
+  const missing = remote({}, 'http://127.0.0.1:9');
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /Set PETTY_MEMORY_SYNC_TOKEN/);
+  const badUrl = remote({ PETTY_MEMORY_SYNC_TOKEN: 'em_test' }, 'ftp://sync.example');
+  assert.equal(badUrl.status, 1);
+  assert.match(badUrl.stderr, /HTTP or HTTPS/);
+});
+
 test('files are saved from paths and can be read back', () => {
   const home = tempHome();
   const path = join(home, 'wiring notes.md');
@@ -197,6 +322,9 @@ test('serve exposes the library over HTTP to token holders', async () => {
     server.stderr.setEncoding('utf8');
     while (!/listening on (\S+)/.test(log)) log += (await once(server.stderr, 'data'))[0];
     const base = /listening on (\S+)/.exec(log)![1]!;
+    assert.equal((await fetch(base)).status, 200);
+    assert.match(await (await fetch(`${base}/s/ps_fixture`)).text(), /Petty Memory/);
+    assert.equal((await fetch(`${base}/api/v1/items`)).status, 401);
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const saved = await fetch(`${base}/api/v1/capture`, { method: 'POST', headers, body: JSON.stringify({ selection: 'from the phone' }) });
     assert.equal(saved.status, 201);

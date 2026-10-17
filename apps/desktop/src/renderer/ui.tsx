@@ -2,7 +2,10 @@ import type { ItemType, Project } from '@enve-memory/core';
 import {
   type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
+import { AppContext, type AppState } from './context.ts';
 import { call } from './lib/api.ts';
+import type { ControlledValue, MarkdownEditor as SharedEditor } from '@enve-memory/editor';
+import '@enve-memory/editor/editor.css';
 import { createMarkdown } from './lib/markdown.ts';
 
 const PATHS = {
@@ -41,6 +44,17 @@ const PATHS = {
   revisit: 'M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5',
   unopened: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   graph: 'M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM7 7.8l4 8.4M16.8 9.6l-3.8 6.8M8 6.3l8 1.4',
+  outline: 'M4 5h12M8 10h12M8 15h12M12 20h8',
+  chevron: 'M9 6l6 6-6 6',
+  up: 'M12 19V5M6 11l6-6 6 6',
+  down: 'M12 5v14M6 13l6 6 6-6',
+  indent: 'M4 5h16M10 12h10M4 19h16M4 9l3 3-3 3',
+  outdent: 'M4 5h16M10 12h10M4 19h16M7 9l-3 3 3 3',
+  more: 'M5.5 12h1M11.5 12h1M17.5 12h1',
+  lock: 'M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4',
+  share: 'M4 13v7h16v-7M12 3v12M8 7l4-4 4 4',
+  flag: 'M5 21V4h12l-2.5 4L17 12H5',
+  star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3l-5.5 2.9 1-6.2L3 9.6l6.2-.9z',
 } as const;
 
 export type IconName = keyof typeof PATHS;
@@ -68,9 +82,15 @@ export function Empty({ title, children, action }: { title: string; children?: R
 
 const markdown = createMarkdown(window as unknown as Parameters<typeof createMarkdown>[0]);
 
-/** Rendered untrusted Markdown. Links open in the system browser through the main process. */
-export function MarkdownView({ source, baseUrl, className }: { source: string; baseUrl?: string | null; className?: string }) {
-  const html = useMemo(() => markdown.render(source, { baseUrl }), [source, baseUrl]);
+/** Rendered untrusted Markdown. Web links open in the system browser through main; item references open in the app. */
+export function MarkdownView({ source, baseUrl, className, titles }: {
+  source: string;
+  baseUrl?: string | null;
+  className?: string;
+  titles?: ReadonlyMap<string, string>;
+}) {
+  const app = useContext(AppContext) as AppState | null;
+  const html = useMemo(() => markdown.render(source, { baseUrl, titles }), [source, baseUrl, titles]);
   return (
     <div
       className={`markdown ${className ?? ''}`}
@@ -78,6 +98,11 @@ export function MarkdownView({ source, baseUrl, className }: { source: string; b
         const anchor = (event.target as HTMLElement).closest('a');
         if (!anchor) return;
         event.preventDefault();
+        const item = anchor.getAttribute('data-item');
+        if (item) {
+          app?.openItem(item);
+          return;
+        }
         const href = anchor.getAttribute('href');
         if (href) void call('app.openExternal', href);
       }}
@@ -87,39 +112,110 @@ export function MarkdownView({ source, baseUrl, className }: { source: string; b
   );
 }
 
-export function MarkdownEditor({ value, onChange, placeholder, rows = 10, label, onSubmit }: {
+export type EditorHandle = Pick<SharedEditor, 'insertReference' | 'focus' | 'getMarkdown'>;
+
+// Loaded on first use, so the editor's ProseMirror and Markdown code stays out of the app's first chunk.
+const loadEditor = () => import('@enve-memory/editor');
+
+/**
+ * The shared formatted editor. The draft stays Markdown. `value` echoes of the editor's own changes can arrive after later
+ * keystrokes, so only values it didn't emit (discard, a clean server update) replace the content.
+ */
+export function MarkdownEditor({ value, onChange, placeholder, rows = 10, label, onSubmit, editorRef, titles }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   rows?: number;
   label: string;
   onSubmit?: () => void;
+  editorRef?: React.RefObject<EditorHandle | null>;
+  titles?: ReadonlyMap<string, string>;
 }) {
-  const [preview, setPreview] = useState(false);
+  const app = useContext(AppContext) as AppState | null;
+  const host = useRef<HTMLDivElement>(null);
+  const editor = useRef<SharedEditor | null>(null);
+  const sync = useRef<ControlledValue | null>(null);
+  const [linkRequest, setLinkRequest] = useState<{ current: string | null; resolve: (href: string | null) => void } | null>(null);
+  const latest = useRef({ value, onChange, onSubmit, titles, app });
+  latest.current = { value, onChange, onSubmit, titles, app };
+
+  useEffect(() => {
+    let instance: SharedEditor | null = null;
+    let gone = false;
+    void loadEditor().then(({ controlledValue, createMarkdownEditor }) => {
+      if (gone || !host.current) return;
+      instance = createMarkdownEditor(host.current, {
+        markdown: latest.current.value,
+        label,
+        placeholder,
+        referenceTitle: (id) => latest.current.titles?.get(id),
+        requestLink: (current) => new Promise((resolve) => setLinkRequest({ current, resolve })),
+        onChange: (markdown) => {
+          sync.current?.emitted(markdown);
+          latest.current.onChange(markdown);
+        },
+        onSubmit: () => latest.current.onSubmit?.(),
+        onOpenReference: (id) => latest.current.app?.openItem(id),
+        onOpenLink: (href) => void call('app.openExternal', href),
+      });
+      sync.current = controlledValue(instance);
+      editor.current = instance;
+      if (editorRef) editorRef.current = instance;
+    });
+    return () => {
+      gone = true;
+      instance?.destroy();
+      editor.current = null;
+      sync.current = null;
+      if (editorRef) editorRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    sync.current?.receive(value);
+  }, [value]);
+  useEffect(() => editor.current?.refreshReferences(), [titles]);
+
   return (
-    <div className="md-editor">
-      <div className="segmented small" role="tablist" aria-label={`${label} mode`}>
-        <button role="tab" aria-selected={!preview} className={preview ? '' : 'active'} onClick={() => setPreview(false)}>Write</button>
-        <button role="tab" aria-selected={preview} className={preview ? 'active' : ''} onClick={() => setPreview(true)}>Preview</button>
-      </div>
-      {preview ? (
-        value.trim() ? <MarkdownView source={value} className="md-preview" /> : <p className="muted md-preview">Nothing to preview.</p>
-      ) : (
-        <textarea
-          aria-label={label}
-          value={value}
-          rows={rows}
-          placeholder={placeholder}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && onSubmit) {
-              event.preventDefault();
-              onSubmit();
-            }
+    <>
+      <div ref={host} className="md-editor" style={{ '--pm-min-height': `${rows * 1.55}em` } as React.CSSProperties} />
+      {linkRequest && (
+        <LinkDialog
+          current={linkRequest.current}
+          onClose={(href) => {
+            linkRequest.resolve(href);
+            setLinkRequest(null);
           }}
         />
       )}
-    </div>
+    </>
+  );
+}
+
+/** Asks for a link target; an empty answer removes the link, null cancels. */
+function LinkDialog({ current, onClose }: { current: string | null; onClose: (href: string | null) => void }) {
+  const [text, setText] = useState(current ?? '');
+  const [normalize, setNormalize] = useState<((input: string) => string | null) | null>(null);
+  useEffect(() => void loadEditor().then(({ normalizeLink }) => setNormalize(() => normalizeLink)), []);
+  const target = text.trim() && normalize ? normalize(text) : null;
+  const submit = () => {
+    if (target) onClose(target);
+  };
+  return (
+    <Modal label={current ? 'Edit link' : 'Add link'} onClose={() => onClose(null)}>
+      <h2>{current ? 'Edit link' : 'Add link'}</h2>
+      <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
+        <label className="field">
+          <span>Web or email address</span>
+          <input autoFocus type="text" inputMode="url" value={text} placeholder="https://…" onChange={(event) => setText(event.target.value)} aria-invalid={Boolean(text.trim()) && !target} />
+        </label>
+        {text.trim() && !target && <p className="error-text small">Use a web address (https://…) or an email address.</p>}
+        <div className="dialog-actions">
+          {current && <button type="button" className="button ghost" onClick={() => onClose('')}>Remove link</button>}
+          <button type="button" className="button ghost" onClick={() => onClose(null)}>Cancel</button>
+          <button type="submit" className="button primary" disabled={!target}>{current ? 'Update link' : 'Add link'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -287,6 +383,61 @@ function ConfirmDialog({ options, onClose }: { options: ConfirmOptions; onClose:
             {options.confirmLabel}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+/** A modal dialog: Escape and the scrim close it (unless `busy`), Tab stays inside, focus returns to the opener. */
+export function Modal({ label, onClose, busy = false, className, children }: {
+  label: string;
+  onClose: () => void;
+  busy?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [opener] = useState(() => document.activeElement as HTMLElement | null);
+  const close = () => {
+    if (!busy) onClose();
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+  useEffect(() => () => {
+    if (opener?.isConnected) opener.focus();
+  }, [opener]);
+  return (
+    <div className="overlay" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <div
+        ref={box}
+        className={`dialog ${className ?? ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        aria-busy={busy}
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab' || !box.current) return;
+          const focusable = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+          if (event.shiftKey && document.activeElement === focusable[0]) {
+            event.preventDefault();
+            focusable.at(-1)?.focus();
+          } else if (!event.shiftKey && document.activeElement === focusable.at(-1)) {
+            event.preventDefault();
+            focusable[0]?.focus();
+          }
+        }}
+      >
+        {children}
       </div>
     </div>
   );

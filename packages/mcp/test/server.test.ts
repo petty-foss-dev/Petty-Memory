@@ -38,7 +38,10 @@ test('the tool surface is read/write only, with no way to delete', async () => {
   for (const t of tools) {
     assert.notEqual(t.annotations?.destructiveHint, true, `${t.name} must not be destructive`);
   }
-  for (const name of ['search', 'get_item', 'list_items', 'list_projects', 'get_project', 'list_tasks', 'get_recent_activity']) {
+  for (const name of [
+    'search', 'get_item', 'list_items', 'list_outline', 'get_outline_item', 'get_presentation', 'list_item_versions', 'get_item_version',
+    'list_references', 'list_projects', 'get_project', 'list_tasks', 'get_recent_activity',
+  ]) {
     assert.equal(tools.find((t) => t.name === name)?.annotations?.readOnlyHint, true, name);
   }
 });
@@ -98,15 +101,115 @@ test('long bodies are previewed in lists but complete in get_item', async () => 
   assert.equal((await call('get_item', { id: note.id })).body, body);
 });
 
+test('structural note tools retain text and expose paged project memory without destructive access', async () => {
+  const { call, memory } = await connect();
+  const note = await call('create_outline_note', { title: 'Travel', text: 'Socks and a hat' });
+  await assert.rejects(call('split_note', { id: note.item.id, field: 'body', offset: 5, base_text: 'Stale text' }), /changed|stale|current/i);
+  const split = await call('split_note', { id: note.item.id, field: 'body', offset: 5, base_text: 'Socks and a hat' });
+  const next = split.createdIds[0];
+  assert.equal(memory.items.get(next).body.trim(), 'and a hat');
+  await call('merge_notes', { id: next, previous_id: note.item.id });
+  assert.ok(memory.items.get(next).archivedAt);
+  assert.match(memory.items.get(note.item.id).body, /Socks\n\n/);
+  await call('create_project', { name: 'Trip' });
+  await call('set_project_memory', { project: 'trip', memory: 'Old plan' });
+  await call('set_project_memory', { project: 'trip', memory: 'New plan' });
+  const page = await call('list_project_memory_versions', { project: 'trip', limit: 1, offset: 1 });
+  assert.equal(page.items[0].memory, 'Old plan');
+  assert.ok(page.total >= 2);
+});
+
 test('scopes decide which tools a client can see', async () => {
   const names = async (access: ServerAccess) => (await (await connect(access)).client.listTools()).tools.map((t) => t.name).sort();
   const readOnly = await names({ scopes: ['read'], transport: 'http' });
   assert.ok(readOnly.includes('search') && readOnly.includes('get_project'));
   assert.equal(readOnly.some((n) => n.startsWith('save_') || n.startsWith('create_') || n.startsWith('update_')), false);
-  assert.deepEqual(await names({ scopes: ['capture'], transport: 'http' }), ['create_task', 'save_file', 'save_link', 'save_note']);
+  assert.deepEqual(await names({ scopes: ['capture'], transport: 'http' }), ['create_outline_note', 'create_task', 'save_file', 'save_link', 'save_note']);
   assert.ok((await names({ scopes: ['write'], transport: 'http' })).includes('set_reminder'));
   const writer = await names({ scopes: ['write'], transport: 'http' });
   assert.ok(writer.includes('save_note') && writer.includes('set_project_memory') && !writer.includes('search'));
+});
+
+test('feature tools follow read/write scopes and never reach the vault, shares, sync or deletion', async () => {
+  const names = async (access?: ServerAccess) => (await (await connect(access)).client.listTools()).tools.map((t) => t.name);
+  const readTools = ['get_presentation', 'list_item_versions', 'get_item_version', 'list_references', 'list_project_memory_versions'];
+  const writeTools = ['set_presentation', 'set_checked', 'reset_checklist', 'restore_item_version', 'insert_reference', 'split_note', 'merge_notes'];
+  const reader = await names({ scopes: ['read'], transport: 'http' });
+  const writer = await names({ scopes: ['write'], transport: 'http' });
+  assert.ok(readTools.every((n) => reader.includes(n) && !writer.includes(n)));
+  assert.ok(writeTools.every((n) => writer.includes(n) && !reader.includes(n)));
+  const everything = await names();
+  assert.equal(everything.some((n) => /vault|secret|share|public|sync|delete|purge|unrelate|backup|propose|apply|undo/.test(n)), false);
+  assert.deepEqual(await names({ scopes: ['read', 'write', 'secrets', 'sync'], transport: 'http' }), await names({ scopes: ['read', 'write'], transport: 'http' }));
+});
+
+test('checklist, history and reference tools work against a real library', async () => {
+  const { call, memory } = await connect();
+  const list = await call('create_outline_note', { title: 'Groceries' });
+  const milk = await call('create_outline_note', { parent_id: list.item.id, title: 'Milk' });
+  await call('create_outline_note', { parent_id: list.item.id, title: 'Eggs' });
+  assert.equal((await call('set_presentation', { id: list.item.id, patch: { checklist: true, attention: 'high' } })).checklist, true);
+  assert.deepEqual((await call('list_items', { attention: 'high' })).map((i: { id: string }) => i.id), [list.item.id]);
+  await call('set_checked', { id: milk.item.id, checked: true });
+  assert.deepEqual((await call('get_presentation', { id: list.item.id })).progress, { done: 1, total: 2 });
+  assert.equal((await call('reset_checklist', { id: list.item.id })).updated, 1);
+  await assert.rejects(call('set_presentation', { id: list.item.id, patch: { kind: 'banner' } }));
+
+  await call('update_item', { id: milk.item.id, title: 'Oat milk' });
+  const history = await call('list_item_versions', { id: milk.item.id });
+  const original = history.items.at(-1);
+  const snapshot = await call('get_item_version', { id: original.id });
+  assert.deepEqual([snapshot.rootId, snapshot.total, snapshot.items[0].item.title], [milk.item.id, 1, 'Milk']);
+  assert.deepEqual(await call('restore_item_version', { id: original.id }), { restored: 1 });
+  assert.equal(memory.items.get(milk.item.id).title, 'Milk');
+  assert.equal(memory.versions.list(milk.item.id).total, history.total + 1);
+
+  const recipe = await call('save_note', { text: 'Pancakes' });
+  await call('insert_reference', { from: recipe.id, to: milk.item.id, label: 'dairy' });
+  assert.ok(memory.items.get(recipe.id).body.endsWith(`[[item:${milk.item.id}|dairy]]`));
+  const references = await call('list_references', { id: milk.item.id });
+  assert.deepEqual(references.incoming.map((r: { id: string }) => r.id), [recipe.id]);
+  assert.equal(memory.items.get(recipe.id).source, 'mcp:test-agent');
+});
+
+test('outline tools preserve descendants and project filing and return compact paged results', async () => {
+  const { call, memory } = await connect();
+  const project = memory.projects.create({ name: 'Outline tool project' });
+  const root = await call('create_outline_note', { title: 'Japan', project: project.id });
+  const packing = await call('create_outline_note', { parent_id: root.item.id, title: 'Packing', text: 'x'.repeat(5000) });
+  const passport = await call('create_outline_note', { parent_id: packing.item.id, title: 'Passport' });
+  const bookings = await call('create_outline_note', { parent_id: root.item.id, title: 'Bookings' });
+  const first = await call('list_outline', { parent_id: root.item.id, limit: 1 });
+  assert.equal(first.total, 2);
+  assert.equal(first.items.length, 1);
+  assert.equal(first.items[0].item.id, packing.item.id);
+  assert.ok(first.items[0].item.preview.length < 300);
+  assert.equal(first.items[0].childCount, 1);
+  const second = await call('list_outline', { parent_id: root.item.id, limit: 1, offset: 1 });
+  assert.equal(second.items[0].item.id, bookings.item.id);
+  await call('move_outline_item', { id: bookings.item.id, parent_id: root.item.id, before_id: packing.item.id });
+  assert.equal((await call('list_outline', { parent_id: root.item.id })).items[0].item.id, bookings.item.id);
+  const nested = await call('get_outline_item', { id: passport.item.id });
+  assert.deepEqual(nested.ancestors.map((item: { id: string }) => item.id), [root.item.id, packing.item.id]);
+  await assert.rejects(call('move_outline_item', { id: root.item.id, parent_id: passport.item.id }), /cycle|descendant|itself/i);
+  const moved = await call('move_outline_item', { id: packing.item.id, parent_id: null });
+  assert.equal(moved.parentId, null);
+  assert.equal((await call('get_outline_item', { id: passport.item.id })).parentId, packing.item.id);
+  assert.equal(memory.items.get(root.item.id).project?.id, project.id);
+  assert.equal(memory.items.get(packing.item.id).source, 'mcp:test-agent');
+});
+
+test('outline tool scopes allow capture without allowing existing item movement', async () => {
+  const access: ServerAccess = { scopes: ['capture'], transport: 'http' };
+  const { client, call } = await connect(access);
+  const names = (await client.listTools()).tools.map((tool) => tool.name);
+  assert.ok(names.includes('create_outline_note'));
+  assert.equal(names.includes('move_outline_item'), false);
+  assert.equal(names.includes('list_outline'), false);
+  assert.equal(names.includes('get_outline_item'), false);
+  const saved = await call('create_outline_note', { title: 'Root from capture' });
+  assert.equal(saved.parentId, null);
+  assert.equal(saved.item.title, 'Root from capture');
 });
 
 test('save_link fetches the page so the model gets the title and excerpt right away', async () => {

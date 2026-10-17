@@ -14,6 +14,16 @@ export function newId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** An id a client generated ahead of time. */
+export function clientId(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !UUID_V7.test(value)) throw invalid(`${label} must be a lowercase UUIDv7.`);
+  return value;
+}
+
+type Captured = Map<string, { op: string; actor: string }>;
+
 export class Context {
   readonly db: DatabaseSync;
   readonly deviceId: string;
@@ -29,7 +39,8 @@ export class Context {
     this.actor = actor;
     this.attachmentsDir = attachmentsDir;
     this.deviceId = this.loadDeviceId();
-    const latest = this.get<{ hlc: string | null }>(`SELECT max(hlc) AS hlc FROM changes`)?.hlc;
+    const ceiling = new Date(Date.now() + MAX_CLOCK_LEAD_MS).toISOString();
+    const latest = this.get<{ hlc: string | null }>(`SELECT max(hlc) AS hlc FROM changes WHERE substr(hlc, 1, 24) <= ?`, ceiling)?.hlc;
     this.clock = latest ? parseHlc(latest) : { at: '', counter: 0 };
   }
 
@@ -77,8 +88,31 @@ export class Context {
     this.stmt(sql).run(...params);
   }
 
+  /** Set by EnveMemory: snapshots the items and projects changed in a transaction, once, just before it commits. */
+  captureVersions: ((items: Captured, projects: Captured) => void) | null = null;
+  private changed: Captured = new Map();
+  private changedProjects: Captured = new Map();
+
   tx<T>(fn: () => T): T {
-    return transaction(this.db, fn);
+    if (this.db.isTransaction) return fn();
+    try {
+      return transaction(this.db, () => {
+        const result = fn();
+        this.flushVersions();
+        return result;
+      });
+    } finally {
+      this.changed.clear();
+      this.changedProjects.clear();
+    }
+  }
+
+  private flushVersions(): void {
+    if (this.changed.size === 0 && this.changedProjects.size === 0) return;
+    const { changed, changedProjects } = this;
+    this.changed = new Map();
+    this.changedProjects = new Map();
+    this.captureVersions?.(changed, changedProjects);
   }
 
   /** `origin` is set only when applying another device's change during sync. */
@@ -87,17 +121,37 @@ export class Context {
     origin?: { deviceId: string; actor: string; hlc: string },
   ): void {
     const hlc = origin?.hlc ?? this.tick();
+    this.log(entity, entityId, op, projectId, data, origin?.deviceId ?? this.deviceId, origin?.actor ?? this.actor, hlc, origin ? hlc : null);
+  }
+
+  /**
+   * A repair sync makes by itself, stamped just after `cause` and the entity's current version rather than now, so an
+   * edit any device made after the cause still wins over the repair when it arrives.
+   */
+  recordAfter(cause: string, entity: Change['entity'], entityId: string, op: string, projectId: string | null, data: object): void {
+    const current = this.get<{ hlc: string }>(`SELECT hlc FROM sync_versions WHERE entity = ? AND entity_id = ?`, entity, entityId)?.hlc;
+    const { at, counter } = parseHlc(current && current > cause ? current : cause);
+    const next = counter < MAX_COUNTER ? { at, counter: counter + 1 } : { at: new Date(Date.parse(at) + 1).toISOString(), counter: 0 };
+    this.log(entity, entityId, op, projectId, data, this.deviceId, this.actor, formatHlc(next, this.deviceId), null);
+  }
+
+  private log(
+    entity: Change['entity'], entityId: string, op: string, projectId: string | null, data: object | null,
+    deviceId: string, actor: string, hlc: string, synced: string | null,
+  ): void {
     this.run(
       `INSERT INTO changes (id, device_id, actor, entity, entity_id, op, project_id, data, at, hlc)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      newId(), origin?.deviceId ?? this.deviceId, origin?.actor ?? this.actor, entity, entityId, op, projectId,
-      data === null ? null : JSON.stringify(data), this.now(), hlc,
+      newId(), deviceId, actor, entity, entityId, op, projectId, data === null ? null : JSON.stringify(data), this.now(), hlc,
     );
     this.run(
       `INSERT INTO sync_versions (entity, entity_id, hlc, synced) VALUES (?, ?, ?, ?)
        ON CONFLICT (entity, entity_id) DO UPDATE SET hlc = excluded.hlc, synced = coalesce(excluded.synced, sync_versions.synced)`,
-      entity, entityId, hlc, origin ? hlc : null,
+      entity, entityId, hlc, synced,
     );
+    if (entity === 'item' && !UNVERSIONED_OPS.has(op) && !this.changed.has(entityId)) this.changed.set(entityId, { op, actor });
+    if (entity === 'project' && (!this.changedProjects.has(entityId) || MEMORY_OPS.has(op))) this.changedProjects.set(entityId, { op, actor });
+    if (!this.db.isTransaction) this.flushVersions();
   }
 
   private loadDeviceId(): string {
@@ -109,8 +163,12 @@ export class Context {
   }
 }
 
+// Bookkeeping, not edits: opening an item or delivering its reminder isn't worth a version.
+const UNVERSIONED_OPS = new Set(['open', 'reminded']);
+const MEMORY_OPS = new Set(['set_memory', 'sync']);
+
 const MAX_COUNTER = 999_999;
-const MAX_CLOCK_LEAD_MS = 5 * 60_000;
+export const MAX_CLOCK_LEAD_MS = 5 * 60_000;
 
 /** ISO time, a 6-digit counter and the device: fixed width up to the device, so plain string order is clock order. */
 export const HLC_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)-(\d{6})-([\w-]{1,64})$/;
@@ -159,7 +217,7 @@ export interface ItemRow {
   task_completed_at: string | null;
 }
 
-const PRIORITY_FROM_INT: Record<number, TaskPriority> = { 1: 'high', 2: 'normal', 3: 'low' };
+export const PRIORITY_FROM_INT: Record<number, TaskPriority> = { 1: 'high', 2: 'normal', 3: 'low' };
 export const PRIORITY_TO_INT: Record<TaskPriority, number> = { high: 1, normal: 2, low: 3 };
 
 export function toItem(row: ItemRow): Item {

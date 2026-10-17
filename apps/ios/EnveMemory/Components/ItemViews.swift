@@ -62,7 +62,7 @@ struct TypeGlyph: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(tint ?? hearth.accent)
+            .foregroundStyle(tint ?? hearth.accentText)
             .frame(width: 34, height: 34)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(hearth.accentMuted))
             .accessibilityHidden(true)
@@ -188,6 +188,43 @@ struct ErrorBanner: View {
                 }
             }
         }
+    }
+}
+
+/// Shown above content that came from this phone's saved copy instead of the server.
+struct CachedBanner: View {
+    let savedAt: Date
+
+    @Environment(\.hearth) private var hearth
+
+    var body: some View {
+        HearthCard(padding: HearthSpacing.md) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Offline · saved copy").font(HearthFont.subheadline)
+                    Text("From \(savedAt.formatted(.relative(presentation: .named))). Edits you make are queued and sync when the server is back.")
+                        .font(HearthFont.caption)
+                        .foregroundStyle(hearth.textSecondary)
+                }
+            } icon: {
+                Image(systemName: "icloud.slash").foregroundStyle(hearth.textSecondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("CachedBanner")
+    }
+}
+
+/// Marks a row or field whose change is still waiting in the outbox.
+struct QueuedBadge: View {
+    @Environment(\.hearth) private var hearth
+
+    var body: some View {
+        Label("Queued", systemImage: "clock.arrow.circlepath")
+            .labelStyle(.titleAndIcon)
+            .font(HearthFont.caption)
+            .foregroundStyle(hearth.textTertiary)
+            .accessibilityLabel("Change waiting to sync")
     }
 }
 

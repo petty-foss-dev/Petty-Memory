@@ -118,3 +118,11 @@ export function formatReminder(iso: string, now = new Date()): string {
   if (days > 1 && days < 7) return `${date.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
   return `${formatDate(iso, now.getTime())}, ${time}`;
 }
+
+/** How a restore went, naming any files whose bytes aren't on this device rather than claiming a full recovery. */
+export function recoveryMessage(done: string, { missingFiles = [] }: { missingFiles?: { filename: string }[] }): { message: string; tone: 'info' | 'error' } {
+  if (!missingFiles.length) return { message: done, tone: 'info' };
+  const names = missingFiles.map((file) => file.filename).join(', ');
+  const count = missingFiles.length === 1 ? '1 file isn’t' : `${missingFiles.length} files aren’t`;
+  return { message: `${done}, but ${count} on this device (${names}). Sync with the device that has them, or restore a backup that does.`, tone: 'error' };
+}

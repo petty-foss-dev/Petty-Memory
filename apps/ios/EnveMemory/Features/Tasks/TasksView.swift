@@ -15,6 +15,7 @@ struct TasksView: View {
     @State private var completing: Set<String> = []
     @State private var hasMore = false
     @State private var loadingMore = false
+    @State private var cachedAt: Date?
 
     private let pageSize = 50
 
@@ -28,6 +29,10 @@ struct TasksView: View {
         List {
             header
                 .listRowInsets(EdgeInsets(top: HearthSpacing.sm, leading: HearthSpacing.lg, bottom: HearthSpacing.sm, trailing: HearthSpacing.lg))
+            if let cachedAt {
+                CachedBanner(savedAt: cachedAt)
+                    .listRowInsets(rowInsets)
+            }
             if let error {
                 ErrorBanner(message: error) { Task { await load() } }
                     .listRowInsets(rowInsets)
@@ -124,11 +129,13 @@ struct TasksView: View {
     }
 
     private func load() async {
-        guard let client = connection.client else { return }
+        guard connection.client != nil else { return }
         do {
-            let page = try await client.tasks(status: .active, limit: pageSize)
+            let loaded = try await connection.load(.tasks(status: .active, limit: pageSize), as: [Item].self)
+            let page = loaded.value
             tasks = page
-            hasMore = page.count == pageSize
+            cachedAt = loaded.cachedAt
+            hasMore = page.count == pageSize && loaded.cachedAt == nil
             completing = []
             error = nil
         } catch is CancellationError {

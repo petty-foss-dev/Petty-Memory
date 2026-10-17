@@ -10,6 +10,7 @@ files:
   - dist/preload.cjs
   - dist/cli.mjs
   - dist/renderer/**
+  - dist/web/**
   - "!**/*.map"
   # transformers inlines onnxruntime-web for Node; only onnxruntime-node's binaries are loaded.
   - "!node_modules/onnxruntime-web/**"

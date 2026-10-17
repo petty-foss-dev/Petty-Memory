@@ -1,0 +1,176 @@
+/* Shared formatted editor. Hosts set the --pm-* custom properties to match their theme. */
+.pm-editor {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pm-border, #8884);
+  border-radius: var(--pm-radius, 8px);
+  background: var(--pm-bg, transparent);
+  color: var(--pm-fg, inherit);
+}
+
+.pm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--pm-border, #8884);
+}
+
+.pm-tool {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pm-tool[data-group='end'] { margin-right: 8px; }
+.pm-tool:hover:not(:disabled) { background: var(--pm-hover, #8882); }
+.pm-tool:focus-visible { outline: 2px solid var(--pm-accent, Highlight); outline-offset: 1px; }
+.pm-tool[aria-pressed='true'] { background: var(--pm-active, #8883); border-color: var(--pm-border, #8884); }
+.pm-tool:disabled { opacity: 0.4; cursor: default; }
+.pm-tool-bold { font-weight: 700; }
+.pm-tool-italic { font-style: italic; }
+.pm-tool-strike { text-decoration: line-through; }
+.pm-tool-code, .pm-tool-codeBlock { font-family: var(--pm-mono, ui-monospace, monospace); }
+.pm-tool-source { margin-left: auto; }
+
+.pm-surface, .pm-source { min-height: var(--pm-min-height, 8em); }
+.pm-surface[hidden], .pm-source[hidden] { display: none; }
+
+.pm-source {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0 0 var(--pm-radius, 8px) var(--pm-radius, 8px);
+  background: transparent;
+  color: inherit;
+  font-family: var(--pm-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.pm-surface .ProseMirror {
+  position: relative;
+  min-height: inherit;
+  padding: 10px 12px;
+  outline: none;
+  line-height: 1.55;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0;
+}
+.pm-editor:focus-within { border-color: var(--pm-accent, Highlight); }
+.pm-surface .ProseMirror > :first-child { margin-top: 0; }
+.pm-surface .ProseMirror > :last-child { margin-bottom: 0; }
+.pm-surface .ProseMirror.pm-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--pm-muted, GrayText);
+  pointer-events: none;
+}
+.pm-surface .ProseMirror pre { white-space: pre-wrap; }
+.pm-surface .ProseMirror li { position: relative; }
+.pm-surface .ProseMirror p { margin: 0 0 0.6em; }
+.pm-surface .ProseMirror h1 { font-size: 1.5em; margin: 0.8em 0 0.4em; }
+.pm-surface .ProseMirror h2 { font-size: 1.25em; margin: 0.8em 0 0.4em; }
+.pm-surface .ProseMirror h3, .pm-surface .ProseMirror h4, .pm-surface .ProseMirror h5, .pm-surface .ProseMirror h6 { font-size: 1.05em; margin: 0.8em 0 0.4em; }
+.pm-surface .ProseMirror ul, .pm-surface .ProseMirror ol { margin: 0 0 0.6em; padding-left: 1.5em; }
+.pm-surface .ProseMirror li > p { margin: 0.15em 0; }
+.pm-surface .ProseMirror blockquote { margin: 0 0 0.6em; padding-left: 0.9em; border-left: 3px solid var(--pm-border, #8886); color: var(--pm-muted, inherit); }
+.pm-surface .ProseMirror code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--pm-code-bg, #8882);
+  font-family: var(--pm-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+.pm-surface .ProseMirror pre {
+  margin: 0 0 0.6em;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--pm-code-bg, #8882);
+  font-family: var(--pm-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+.pm-surface .ProseMirror pre code { padding: 0; background: none; font-size: inherit; }
+.pm-surface .ProseMirror .pm-rule hr { border: 0; border-top: 1px solid var(--pm-border, #8886); margin: 0.8em 0; }
+.pm-surface .ProseMirror a.pm-link { color: var(--pm-accent, LinkText); text-decoration: underline; cursor: text; }
+.pm-surface .ProseMirror .pm-ref {
+  padding: 0 0.3em;
+  border-radius: 4px;
+  background: var(--pm-ref-bg, #8882);
+  color: var(--pm-accent, LinkText);
+}
+.pm-surface .ProseMirror .pm-ref::before { content: '↗ '; }
+.pm-surface .ProseMirror .pm-image {
+  padding: 0 0.3em;
+  border: 1px dashed var(--pm-border, #8886);
+  border-radius: 4px;
+  color: var(--pm-muted, inherit);
+  font-size: 0.9em;
+}
+.pm-surface .ProseMirror .pm-raw { font-family: var(--pm-mono, ui-monospace, monospace); font-size: 0.9em; color: var(--pm-muted, inherit); }
+.pm-surface .ProseMirror pre.pm-raw-block { border: 1px dashed var(--pm-border, #8886); background: none; }
+.pm-surface .ProseMirror pre.pm-raw-block::before {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--pm-muted, GrayText);
+  font-family: var(--pm-font, inherit);
+  font-size: 11px;
+  content: 'Markdown source';
+}
+.pm-surface .ProseMirror pre.pm-raw-block[data-kind='table']::before { content: 'Table, kept as Markdown'; }
+.pm-surface .ProseMirror pre.pm-raw-block[data-kind='html']::before { content: 'HTML, shown as text'; }
+.pm-surface .ProseMirror pre.pm-raw-block[data-kind='front-matter']::before { content: 'Front matter'; }
+.pm-surface .ProseMirror li.pm-task { list-style: none; display: flex; gap: 0.45em; align-items: flex-start; margin-left: -1.3em; }
+.pm-surface .ProseMirror .pm-task-box {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin-top: 0.3em;
+  border: 1.5px solid var(--pm-muted, currentColor);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.pm-surface .ProseMirror li.pm-task[data-checked='true'] > .pm-task-box { background: var(--pm-accent, Highlight); border-color: var(--pm-accent, Highlight); }
+.pm-surface .ProseMirror li.pm-task[data-checked='true'] > .pm-task-box::after { content: '✓'; display: block; color: var(--pm-on-accent, #fff); font-size: 0.8em; line-height: 1; text-align: center; }
+.pm-surface .ProseMirror li.pm-task[data-checked='true'] > .pm-task-body { color: var(--pm-muted, inherit); text-decoration: line-through; }
+.pm-surface .ProseMirror .pm-task-body { flex: 1; min-width: 0; }
+
+.pm-surface .ProseMirror-hideselection *::selection { background: transparent; }
+.pm-surface .ProseMirror-hideselection { caret-color: transparent; }
+.pm-surface .ProseMirror [draggable][contenteditable='false'] { user-select: text; }
+.pm-surface .ProseMirror-selectednode { outline: 2px solid var(--pm-accent, Highlight); }
+.pm-surface li.ProseMirror-selectednode { outline: none; }
+.pm-surface li.ProseMirror-selectednode::after {
+  content: '';
+  position: absolute;
+  inset: -2px -2px -2px -32px;
+  border: 2px solid var(--pm-accent, Highlight);
+  pointer-events: none;
+}
+.pm-surface img.ProseMirror-separator { display: inline !important; border: none !important; margin: 0 !important; }
+.pm-surface .ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; }
+.pm-surface .ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid currentColor;
+  animation: pm-cursor-blink 1.1s steps(2, start) infinite;
+}
+.pm-surface .ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+@keyframes pm-cursor-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .pm-surface .ProseMirror-gapcursor::after { animation: none; }
+}

@@ -1,9 +1,9 @@
 import { ext } from './browser.js';
 import { listOutbox, summarize } from './outbox.js';
 
-export const OK_COLOR = '#F5921A';
-export const ERROR_COLOR = '#D93A2B';
-const QUEUE_COLOR = '#7A6F62';
+export const OK_COLOR = '#0F7A8A';
+export const ERROR_COLOR = '#B23A31';
+const QUEUE_COLOR = '#53616B';
 const FLASH_MS = 2000;
 
 /** The global badge counts captures waiting to sync; per-tab flashes sit on top of it. */

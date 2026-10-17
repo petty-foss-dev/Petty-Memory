@@ -62,6 +62,29 @@ test('restore refuses files that are not sound libraries', () => {
   assert.throws(() => restoreBackup(pathsFor(home), bogus), MemoryError);
 });
 
+test('restoring changes the writer identity and clears peer cursors before log positions can be reused', () => {
+  const home = tempHome();
+  const memory = EnveMemory.open({ home, actor: 'test' });
+  const identity = memory.deviceId;
+  const note = memory.items.saveNote({ body: 'Before rewind' });
+  memory.sync.setPeerState('https://peer.example/api/v1', { deviceId: identity, pushedCursor: 1, pulledCursor: 1, uploads: [], downloads: [] });
+  const snapshot = memory.backups.create('manual');
+  const cursor = memory.feed.revision;
+  memory.items.saveNote({ body: 'After the snapshot' });
+  memory.close();
+  restoreBackup(pathsFor(home), snapshot.path);
+  const restored = EnveMemory.open({ home, actor: 'test' });
+  try {
+    restored.items.update(note.id, { body: 'New timeline' });
+    assert.ok(restored.feed.revision >= cursor);
+    assert.notEqual(restored.feed.page(cursor).deviceId, identity, 'clients reset even when the numeric cursor fits');
+    assert.equal(restored.sync.peerState('https://peer.example/api/v1'), null);
+    assert.notEqual(restored.sync.exportChanges(cursor).deviceId, identity);
+  } finally {
+    restored.close();
+  }
+});
+
 test('export writes readable Markdown per project plus complete metadata', () => {
   const home = tempHome();
   const memory = EnveMemory.open({ home, actor: 'test' });

@@ -18,16 +18,20 @@
   },
   "workspaces": [
     "packages/*",
-    "apps/desktop"
+    "apps/desktop",
+    "apps/web"
   ],
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/editor",
     "test": "node --test --test-reporter=dot \"packages/*/test/*.test.ts\"",
-    "check": "npm run typecheck && npm test && npm run test:extension && npm run test:desktop",
+    "check": "npm run typecheck && npm test && npm run test:extension && npm run test:desktop && npm run check:web",
     "cli": "node packages/cli/src/main.ts",
     "test:extension": "npm --prefix apps/extension test",
     "models": "node -e \"import('@enve-memory/embeddings').then(async ({ LocalEmbedder }) => { await new LocalEmbedder('.cache/models').embed(['warm up'], 'query'); console.log('Model cached in .cache/models'); })\"",
     "test:desktop": "tsc -p apps/desktop && npm --prefix apps/desktop test",
+    "web": "npm --prefix apps/web start --",
+    "check:web": "npm --prefix apps/web run check",
+    "check:editor": "tsc -p packages/editor && node --test \"packages/editor/test/*.test.ts\"",
     "demo": "node scripts/demo-library.ts"
   },
   "devDependencies": {

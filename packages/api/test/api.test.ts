@@ -116,6 +116,73 @@ test('a writer can run the whole project workflow over REST', async () => {
   assert.equal(hits.data.length, 2);
 });
 
+test('outline endpoints create, navigate and move a subtree without changing its project', async () => {
+  const project = memory.projects.create({ name: 'Outline REST project' });
+  const parent = await call('POST', '/api/v1/outline', writer, { title: 'Trip', project: project.id });
+  assert.equal(parent.status, 201);
+  assert.equal(parent.data.parentId, null);
+  const parentId = parent.data.item.id;
+  const first = await call('POST', '/api/v1/outline', writer, { parentId, title: 'Packing' });
+  const second = await call('POST', '/api/v1/outline', writer, { parentId, title: 'Bookings' });
+  const grandchild = await call('POST', '/api/v1/outline', writer, { parentId: first.data.item.id, title: 'Passport' });
+  assert.equal(first.status, 201);
+  assert.equal(grandchild.status, 201);
+  assert.equal(first.data.item.source, 'api:phone');
+  const children = await call('GET', `/api/v1/outline?parent=${parentId}`, reader);
+  assert.equal(children.status, 200);
+  assert.equal(children.data.total, 2);
+  assert.deepEqual(children.data.items.map((entry: { item: { id: string } }) => entry.item.id), [first.data.item.id, second.data.item.id]);
+  assert.equal(children.data.items[0].childCount, 1);
+  assert.equal((await call('GET', `/api/v1/outline/${parentId}`, reader)).data.childCount, 2);
+  const reordered = await call('PUT', `/api/v1/outline/${second.data.item.id}/parent`, writer, { parentId, beforeId: first.data.item.id });
+  assert.equal(reordered.status, 200);
+  assert.equal((await call('GET', `/api/v1/outline?parent=${parentId}`, reader)).data.items[0].item.id, second.data.item.id);
+  const destination = memory.items.saveNote({ body: 'Travel archive in another collection' });
+  const moved = await call('PUT', `/api/v1/outline/${parentId}/parent`, writer, { parentId: destination.id });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.data.item.project.id, project.id);
+  const ancestors = await call('GET', `/api/v1/outline/${grandchild.data.item.id}/ancestors`, reader);
+  assert.deepEqual(ancestors.data.map((item: { id: string }) => item.id), [destination.id, parentId, first.data.item.id]);
+  assert.equal((await call('PUT', `/api/v1/outline/${parentId}/parent`, writer, { parentId: grandchild.data.item.id })).status, 400);
+  assert.equal((await call('PUT', `/api/v1/outline/${first.data.item.id}/parent`, writer, {})).status, 400);
+  assert.equal((await call('POST', '/api/v1/outline', writer, { parentId: true, title: 'Invalid' })).status, 400);
+  assert.equal((await call('POST', '/api/v1/outline', writer, { title: ' ', body: ' ' })).status, 400);
+});
+
+test('outline scopes distinguish capture from reading and movement, and retries do not duplicate children', async () => {
+  const parent = memory.items.saveNote({ body: 'Outline API scope parent' });
+  const request = { parentId: parent.id, title: 'Capture-only child' };
+  const headers = { 'Idempotency-Key': 'outline-child-once' };
+  const first = await call('POST', '/api/v1/outline', extension, request, headers);
+  const replay = await call('POST', '/api/v1/outline', extension, request, headers);
+  assert.equal(first.status, 201);
+  assert.equal(replay.status, 201);
+  assert.equal(replay.data.item.id, first.data.item.id);
+  assert.equal(replay.headers.get('idempotent-replayed'), 'true');
+  assert.equal(memory.outline.children(parent.id).total, 1);
+  assert.equal((await call('GET', '/api/v1/outline', extension)).status, 403);
+  assert.equal((await call('GET', `/api/v1/outline/${parent.id}`, extension)).status, 403);
+  assert.equal((await call('GET', `/api/v1/outline/${parent.id}/ancestors`, extension)).status, 403);
+  assert.equal((await call('POST', '/api/v1/outline', reader, request)).status, 403);
+  assert.equal((await call('PUT', `/api/v1/outline/${first.data.item.id}/parent`, extension, { parentId: null })).status, 403);
+  assert.equal((await call('PUT', `/api/v1/outline/${first.data.item.id}/parent`, reader, { parentId: null })).status, 403);
+  assert.equal(memory.outline.get(first.data.item.id).parentId, parent.id);
+});
+
+test('outline paging exposes all siblings and validates query parameters', async () => {
+  const parent = memory.items.saveNote({ body: 'Outline API paged parent' });
+  for (let index = 0; index < 205; index++) memory.outline.createNote({ parentId: parent.id, title: `Entry ${index}` });
+  const page = await call('GET', `/api/v1/outline?parent=${parent.id}&limit=200&offset=200`, reader);
+  assert.equal(page.status, 200);
+  assert.equal(page.data.total, 205);
+  assert.equal(page.data.items.length, 5);
+  assert.equal(page.data.items[0].item.title, 'Entry 200');
+  for (const query of ['offset=-1', 'offset=1.5', 'limit=0', 'limit=Infinity']) {
+    assert.equal((await call('GET', `/api/v1/outline?parent=${parent.id}&${query}`, reader)).status, 400, query);
+  }
+  assert.equal((await call('GET', '/api/v1/outline/missing-outline-item', reader)).status, 404);
+});
+
 test('errors map to HTTP statuses with a machine-readable code', async () => {
   assert.equal((await call('GET', '/api/v1/items/nope', reader)).status, 404);
   assert.equal((await call('POST', '/api/v1/items', writer, '{not json')).status, 400);

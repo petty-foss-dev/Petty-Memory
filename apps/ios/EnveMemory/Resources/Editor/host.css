@@ -1,0 +1,5 @@
+/* The app's side of the shared editor: Dynamic Type through the system body font, colours from Swift via --pm-*. */
+html { font: -apple-system-body; -webkit-text-size-adjust: none; background: transparent; }
+body { margin: 0; color: var(--pm-fg); }
+.pm-editor { min-height: calc(100vh - 2px); box-sizing: border-box; }
+.pm-tool { min-width: 44px; min-height: 44px; }

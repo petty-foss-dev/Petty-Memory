@@ -1,10 +1,19 @@
-import type { ItemDetail, TaskPriority, TaskStatus } from '@enve-memory/core';
-import { useState } from 'react';
+import type { ItemDetail, ItemPresentation, TaskPriority, TaskStatus } from '@enve-memory/core';
+import { useMemo, useRef, useState } from 'react';
 import { call, errorMessage, useLive } from '../lib/api.ts';
-import { TYPE_LABELS, actorInfo, formatBytes, formatDate, formatDateTime, relativeTime, siteOf } from '../lib/format.ts';
+import { applyEdit } from '../lib/edits.ts';
+import { TYPE_LABELS, actorInfo, displayTitle, formatBytes, formatDate, formatDateTime, relativeTime, siteOf } from '../lib/format.ts';
+import { ATTENTION_LABELS, KIND_LABELS, isSecret, presentationOf } from '../lib/presentation.ts';
 import { useApp } from '../context.ts';
-import { Icon, MarkdownEditor, MarkdownView, ProjectSelect, TagEditor, TypeIcon, useDraft, useFeedback } from '../ui.tsx';
+import { type EditorHandle, Icon, MarkdownEditor, MarkdownView, ProjectSelect, TagEditor, Toggle, TypeIcon, useDraft, useFeedback } from '../ui.tsx';
+import { AiEditDialog } from './AiEdit.tsx';
+import { ConnectionsSection, useReferences } from './Connections.tsx';
+import { VersionsPanel } from './History.tsx';
 import { IntentChips, PinButton, RemindMenu } from './ItemActions.tsx';
+import { ItemPicker } from './ItemPicker.tsx';
+import { MoveDialog } from './OutlineMove.tsx';
+import { ShareDialog } from './Share.tsx';
+import { SecretBody } from './Vault.tsx';
 
 const STATUS_LABELS: Record<TaskStatus, string> = { open: 'Open', in_progress: 'In progress', done: 'Done', cancelled: 'Cancelled' };
 
@@ -32,14 +41,27 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
   const title = useDraft(item.title);
   const body = useDraft(item.body);
   const [showHistory, setShowHistory] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
+  const [dialog, setDialog] = useState<'ai' | 'share' | 'reference' | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const editor = useRef<EditorHandle>(null);
+  const references = useReferences(item.id);
+  const titles = useMemo(() => new Map((references.data?.outgoing ?? []).map((r) => [r.id, r.title || 'Untitled'])), [references.data]);
   const decision = item.type === 'decision';
+  const secret = isSecret(item);
 
   const fail = (error: unknown) => toast(errorMessage(error), 'error');
+  // Saved through the editor journal against the text this drawer loaded, so a newer edit elsewhere is never overwritten.
   const saveTitle = () => {
-    if (title.dirty) call('items.update', item.id, { title: title.draft }).catch(fail);
+    if (!title.dirty) return;
+    applyEdit([{ op: 'update', id: item.id, title: title.draft, baseTitle: item.title }]).catch(fail);
   };
   const saveBody = () => {
-    call('items.update', item.id, { body: body.draft }).then(() => toast('Saved'), fail);
+    const draft = editor.current?.getMarkdown() ?? body.draft;
+    applyEdit([{ op: 'update', id: item.id, body: draft, baseBody: item.body }]).then(() => {
+      setSaveError(null);
+      toast('Saved');
+    }, (error: unknown) => setSaveError(errorMessage(error)));
   };
   const remove = async () => {
     const ok = await confirm({
@@ -61,8 +83,8 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
 
   return (
     <div className="drawer-content">
-      {decision ? (
-        <h1 className="item-heading">{item.title}</h1>
+      {decision || secret ? (
+        <h1 className="item-heading">{secret && <Icon name="lock" size={20} />} {item.title}</h1>
       ) : (
         <input
           className="item-heading"
@@ -90,7 +112,13 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
         <PinButton item={item} />
         {!decision && <RemindMenu item={item} />}
         {!decision && item.type !== 'task' && <IntentChips item={item} />}
+        {!decision && !secret && info?.aiEnabled && (
+          <button className="button small" onClick={() => setDialog('ai')}><Icon name="sparkle" size={14} /> Edit with AI…</button>
+        )}
+        {!secret && <button className="button small" onClick={() => setDialog('share')}><Icon name="share" size={14} /> Share…</button>}
       </div>
+
+      {!decision && <PresentationControls item={item} />}
 
       <div className="field-row">
         <label className="field inline">
@@ -106,6 +134,8 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
 
       {item.task && <TaskFields item={item} />}
 
+      <OutlinePlacement item={item} />
+
       <section className="detail-section">
         <h2>Tags</h2>
         <TagEditor
@@ -115,10 +145,12 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
         />
       </section>
 
-      <section className="detail-section">
+      {secret && <SecretBody item={item} />}
+
+      {!secret && <section className="detail-section">
         <h2>{decision ? 'Reason' : item.type === 'note' ? 'Note' : item.task ? 'Notes' : 'Your note'}</h2>
         {decision ? (
-          item.body ? <MarkdownView source={item.body} /> : <p className="muted">No reason recorded.</p>
+          item.body ? <MarkdownView source={item.body} titles={titles} /> : <p className="muted">No reason recorded.</p>
         ) : (
           <>
             <MarkdownEditor
@@ -127,23 +159,27 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
               onChange={body.setDraft}
               onSubmit={saveBody}
               rows={item.type === 'note' ? 12 : 4}
-              placeholder={item.type === 'bookmark' ? 'Why is this worth keeping?' : 'Write in Markdown…'}
+              placeholder={item.type === 'bookmark' ? 'Why is this worth keeping?' : 'Write here. Use the toolbar for formatting, or switch to Markdown.'}
+              editorRef={editor}
+              titles={titles}
             />
-            {body.dirty && (
-              <div className="inline-actions">
-                <button className="button primary small" onClick={saveBody}>Save</button>
-                <button className="button ghost small" onClick={body.reset}>Discard</button>
-                <span className="muted small">⌘↵ to save</span>
-              </div>
+            {saveError && body.dirty && (
+              <p className="error-text small" role="alert">Not saved: {saveError} Your text is still here; copy it or Discard to load the saved version.</p>
             )}
+            <div className="inline-actions">
+              {body.dirty && <button className="button primary small" onClick={saveBody}>Save</button>}
+              {body.dirty && <button className="button ghost small" onClick={() => { setSaveError(null); body.reset(); }}>Discard</button>}
+              <button className="button ghost small" onClick={() => setDialog('reference')}>Link to an item…</button>
+              {body.dirty && <span className="muted small">⌘↵ to save</span>}
+            </div>
           </>
         )}
         {decision && item.project && (
           <button className="button small" onClick={() => go({ view: 'project', id: item.project!.id, supersede: item.id })}>Supersede…</button>
         )}
-      </section>
+      </section>}
 
-      {(ai || info?.aiEnabled) && !decision && item.type !== 'task' && (
+      {(ai || info?.aiEnabled) && !decision && !secret && item.type !== 'task' && (
         <section className="detail-section">
           <h2>AI summary</h2>
           {ai?.status === 'done' && (
@@ -172,7 +208,7 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
         </section>
       )}
 
-      {item.attachments.length > 0 && (
+      {!secret && item.attachments.length > 0 && (
         <section className="detail-section">
           <h2>File</h2>
           {item.attachments.map((a) => (
@@ -185,21 +221,7 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
         </section>
       )}
 
-      {item.relations.length > 0 && (
-        <section className="detail-section">
-          <h2>Related</h2>
-          <ul className="mini-list">
-            {item.relations.map((r) => (
-              <li key={`${r.kind}-${r.direction}-${r.id}`}>
-                <button onClick={() => openItem(r.id)}>
-                  <span><TypeIcon type={r.type} size={14} /> {r.title || 'Untitled'}</span>
-                  <span className="muted small">{relationLabel(r.kind, r.direction)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <ConnectionsSection item={item} backlinks={references.data?.incoming ?? []} />
 
       {(ingest || item.content) && (
         <section className="reader-section" aria-label="Archived source">
@@ -230,11 +252,31 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
       )}
 
       <section className="detail-section">
-        <button className="link-button" onClick={() => setShowHistory(!showHistory)}>
-          <Icon name="history" size={14} /> {showHistory ? 'Hide history' : 'Show history'}
-        </button>
+        <div className="inline-actions">
+          <button className="link-button" aria-expanded={showVersions} onClick={() => setShowVersions(!showVersions)}>
+            <Icon name="history" size={14} /> {showVersions ? 'Hide versions' : 'Versions and restore'}
+          </button>
+          <button className="link-button" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}>
+            {showHistory ? 'Hide activity' : 'Activity'}
+          </button>
+        </div>
+        {showVersions && <VersionsPanel itemId={item.id} />}
         {showHistory && <ItemHistory id={item.id} />}
       </section>
+
+      {dialog === 'ai' && <AiEditDialog rootId={item.id} title={displayTitle(item)} onClose={() => setDialog(null)} />}
+      {dialog === 'share' && <ShareDialog rootId={item.id} title={displayTitle(item)} onClose={() => setDialog(null)} />}
+      {dialog === 'reference' && (
+        <ItemPicker
+          title="Link to an item"
+          exclude={[item.id]}
+          onClose={() => setDialog(null)}
+          onPick={(target) => {
+            setDialog(null);
+            editor.current?.insertReference(target.id, target.title);
+          }}
+        />
+      )}
 
       <footer className="drawer-footer">
         {!decision && (item.archivedAt ? (
@@ -252,11 +294,102 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
   );
 }
 
-function relationLabel(kind: string, direction: 'outgoing' | 'incoming'): string {
-  if (kind === 'supersedes') return direction === 'outgoing' ? 'supersedes' : 'superseded by';
-  if (kind === 'depends_on') return direction === 'outgoing' ? 'depends on' : 'needed by';
-  if (kind === 'derived_from') return direction === 'outgoing' ? 'derived from' : 'source of';
-  return kind.replace('_', ' ');
+/** Where the item sits in the outline, shown once it's nested or holds anything. */
+function OutlinePlacement({ item }: { item: ItemDetail }) {
+  const { go, openItem } = useApp();
+  const { toast } = useFeedback();
+  const [moving, setMoving] = useState(false);
+  const live = useLive(() => Promise.all([call('outline.get', item.id), call('outline.ancestors', item.id)]), [item.id]);
+  if (!live.data) return null;
+  const [entry, ancestors] = live.data;
+  if (ancestors.length === 0 && entry.childCount === 0) return null;
+  const movable = item.type !== 'decision' && !item.archivedAt;
+  return (
+    <section className="detail-section outline-placement">
+      <h2>Outline</h2>
+      {ancestors.length > 0 && (
+        <nav className="crumbs" aria-label="Inside">
+          <ol>
+            {ancestors.map((ancestor) => (
+              <li key={ancestor.id}>
+                <button className="link-button" onClick={() => openItem(ancestor.id)}>{displayTitle(ancestor)}</button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+      <div className="inline-actions">
+        {entry.childCount > 0 && <span className="muted small">{entry.childCount} inside</span>}
+        <button className="button small" onClick={() => go({ view: 'outline', reveal: item.id })}>Show in outline</button>
+        {movable && <button className="button small" onClick={() => setMoving(true)}>Move…</button>}
+      </div>
+      {moving && (
+        <MoveDialog
+          entry={entry}
+          onClose={(moved) => {
+            setMoving(false);
+            if (moved) toast(moved.parentId ? `Moved into ${moved.title}` : 'Moved to the top level');
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+const ATTENTION_ORDER = ['high', 'normal', 'low'] as const;
+
+/** Style, attention, review and checklist settings, so nobody needs Markdown to shape a note. */
+function PresentationControls({ item }: { item: ItemDetail }) {
+  const { toast } = useFeedback();
+  const presentation = presentationOf(item);
+  const progress = useLive(
+    () => (presentation.checklist ? call('presentation.progress', item.id) : Promise.resolve(null)),
+    [item.id, presentation.checklist],
+  );
+  const fail = (error: unknown) => toast(errorMessage(error), 'error');
+  const update = (patch: Partial<ItemPresentation>) => call('presentation.update', item.id, patch).catch(fail);
+  return (
+    <section className="detail-section presentation-controls" aria-label="Style">
+      <div className="field-row">
+        <div className="field inline">
+          <span>Show as</span>
+          <div className="segmented small" role="radiogroup" aria-label="Show as">
+            {(Object.keys(KIND_LABELS) as ItemPresentation['kind'][]).map((kind) => (
+              <button key={kind} role="radio" aria-checked={presentation.kind === kind} className={presentation.kind === kind ? 'active' : ''} onClick={() => void update({ kind })}>
+                {KIND_LABELS[kind]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="field inline">
+          <span>Attention</span>
+          <div className="segmented small" role="radiogroup" aria-label="Attention">
+            {ATTENTION_ORDER.map((attention) => (
+              <button key={attention} role="radio" aria-checked={presentation.attention === attention} className={presentation.attention === attention ? 'active' : ''} onClick={() => void update({ attention })}>
+                {ATTENTION_LABELS[attention]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="inline-actions">
+        <label className="check"><Toggle label="Marked for review" checked={presentation.review} onChange={(review) => void update({ review })} /> Marked for review</label>
+        {!item.task && (
+          <label className="check">
+            <Toggle label="Checked off" checked={presentation.checked} onChange={(checked) => void applyEdit([{ op: 'check', id: item.id, checked }]).catch(fail)} /> Checked off
+          </label>
+        )}
+        <label className="check"><Toggle label="Checklist" checked={presentation.checklist} onChange={(checklist) => void update({ checklist })} /> Checklist</label>
+        {presentation.checklist && (
+          <>
+            <label className="check"><Toggle label="Hide completed" checked={presentation.hideCompleted} onChange={(hideCompleted) => void update({ hideCompleted })} /> Hide completed</label>
+            {progress.data && <span className="muted small">{progress.data.done} of {progress.data.total} done</span>}
+            <button className="button small" onClick={() => call('presentation.reset', item.id).then(({ updated }) => toast(`Unchecked ${updated}`), fail)}>Reset</button>
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function TaskFields({ item }: { item: ItemDetail }) {

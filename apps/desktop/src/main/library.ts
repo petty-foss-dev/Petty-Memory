@@ -1,15 +1,19 @@
-import { type AiProvider, type KeyLookup, enrichWorker, providerFor } from '@enve-memory/ai';
-import { type ApiServer, createApiServer, lanUrls } from '@enve-memory/api';
+import { type AiProvider, type KeyLookup, enrichWorker, organizeWorker, providerFor } from '@enve-memory/ai';
+import { type ApiServer, RemoteSyncClient, RemoteSyncPartialError, type RemoteSyncResult, createApiServer, lanUrls } from '@enve-memory/api';
 import { type DrainWorker, EnveMemory, MemoryError, type SyncResult, pathsFor, restoreBackup } from '@enve-memory/core';
 import { type LocalEmbedder, attachLocalEmbedder, indexWorker } from '@enve-memory/embeddings';
-import type { ApiStatus, SyncStatus } from '../shared/ipc.ts';
+import type { ApiStatus, RemoteStatus, SyncStatus } from '../shared/ipc.ts';
 
 export interface LibraryOptions {
   home: string;
   version: string;
   port: number;
   lan: boolean;
+  /** The browser client's static files, served for share links (/s/<token>); null if this build has none. */
+  webRoot: string | null;
   keys: KeyLookup;
+  /** The configured remote sync server, or null when there is none. */
+  remote: () => { url: string; token: string } | null;
   /** Something in the library changed: our own write, a worker, the API, or another process. */
   onChanged: () => void;
 }
@@ -27,11 +31,20 @@ export class Library {
   private embedder: LocalEmbedder | null = null;
   private indexer: DrainWorker | null = null;
   private enricher: DrainWorker | null = null;
+  private organizer: DrainWorker | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
   private seen = { version: -1, change: '' };
   private syncing = false;
+  private remoteSyncing = false;
+  private remotePending: Promise<unknown> | null = null;
+  private remoteConfiguration: Promise<void> = Promise.resolve();
+  private remoteWatch: { controller: AbortController; pending: Promise<void> } | null = null;
+  private stopping = false;
+  // Kept between runs so its cursors survive; replaced when the server or token changes.
+  private remoteClient: { key: string; client: RemoteSyncClient } | null = null;
   apiStatus: ApiStatus;
   lastSync: SyncStatus['last'] = null;
+  lastRemote: RemoteStatus['last'] = null;
   aiError: string | null = null;
 
   constructor(options: LibraryOptions) {
@@ -52,10 +65,20 @@ export class Library {
     return this.syncing;
   }
 
+  get servesWeb(): boolean {
+    return this.options.webRoot !== null;
+  }
+
+  get remoteRunning(): boolean {
+    return this.remoteSyncing;
+  }
+
   async start(): Promise<void> {
+    this.stopping = false;
     this.current = EnveMemory.open({ home: this.options.home, actor: DESKTOP_ACTOR });
     this.attachEmbedder();
     this.enricher = enrichWorker(this.current, () => this.provider(), this.options.onChanged);
+    this.organizer = organizeWorker(this.current, () => this.provider(), this.options.onChanged);
     await this.startApi();
     this.markSeen();
     this.kick();
@@ -66,14 +89,21 @@ export class Library {
       setInterval(() => void this.sync(), SYNC_MS),
     ];
     void this.sync();
+    void this.ensureRemote().catch((error: unknown) => this.remoteError(error));
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
     for (const timer of this.timers) clearInterval(timer);
     this.timers = [];
+    await this.remoteConfiguration;
+    await this.stopRemoteWatch();
+    await this.remotePending?.catch(() => {});
     await this.stopApi();
     await this.indexer?.idle();
     await this.enricher?.idle();
+    await this.organizer?.idle();
+    this.remoteClient = null;
     this.current?.close();
     this.current = null;
   }
@@ -99,6 +129,7 @@ export class Library {
     this.api?.ingest.kick();
     this.indexer?.kick();
     this.enricher?.kick();
+    this.organizer?.kick();
   }
 
   /** After a desktop write: process anything it queued and tell every window. */
@@ -147,15 +178,99 @@ export class Library {
     this.options.onChanged();
   }
 
+  async remoteSync(): Promise<void> {
+    const memory = this.current;
+    if (!memory || this.stopping || this.remoteSyncing || !this.options.remote()) return;
+    this.remoteSyncing = true;
+    this.options.onChanged();
+    let signal: AbortSignal | undefined;
+    try {
+      const client = await this.ensureRemote();
+      if (!client || this.stopping || this.current !== memory) return;
+      signal = this.remoteWatch?.controller.signal;
+      const pending = client.run({ signal });
+      this.remotePending = pending;
+      const run = await pending;
+      if (!signal?.aborted && this.current === memory) this.remoteResult(run);
+    } catch (error) {
+      if (!signal?.aborted && !this.stopping) this.remoteError(error);
+    } finally {
+      this.remoteSyncing = false;
+      this.remotePending = null;
+      if (!this.stopping) this.options.onChanged();
+    }
+  }
+
+  forgetRemote(): void {
+    this.remoteWatch?.controller.abort();
+    this.remoteClient = null;
+    this.lastRemote = null;
+  }
+
+  private ensureRemote(): Promise<RemoteSyncClient | null> {
+    let client: RemoteSyncClient | null = null;
+    const setup = this.remoteConfiguration.then(async () => {
+      let target = this.options.remote();
+      const key = target ? `${target.url}\n${target.token}` : null;
+      if (!this.current || this.stopping) return;
+      if (key !== this.remoteClient?.key || !this.remoteWatch) {
+        await this.stopRemoteWatch();
+        target = this.options.remote();
+        if (!target || !this.current || this.stopping) { this.remoteClient = null; return; }
+        const memory = this.current;
+        const next = new RemoteSyncClient(memory, target);
+        this.remoteClient = { key: `${target.url}\n${target.token}`, client: next };
+        const controller = new AbortController();
+        const active = () => !controller.signal.aborted && this.current === memory && this.remoteClient?.client === next;
+        const pending = next.watch({
+          signal: controller.signal,
+          onSync: (result) => { if (active()) this.remoteResult(result); },
+          onError: (error) => { if (active()) this.remoteError(error); },
+        });
+        const watch = { controller, pending };
+        this.remoteWatch = watch;
+        void pending.finally(() => { if (this.remoteWatch === watch) this.remoteWatch = null; });
+      }
+      client = this.remoteClient?.client ?? null;
+    });
+    this.remoteConfiguration = setup.catch(() => {});
+    return setup.then(() => client);
+  }
+
+  private async stopRemoteWatch(): Promise<void> {
+    const watch = this.remoteWatch;
+    if (!watch) return;
+    watch.controller.abort();
+    await watch.pending;
+    if (this.remoteWatch === watch) this.remoteWatch = null;
+  }
+
+  private remoteResult(result: RemoteSyncResult): void {
+    this.lastRemote = { at: new Date().toISOString(), ...result, error: result.rejected ? 'Some changes were refused and remain pending.' : null };
+    if (result.pulled) this.kick();
+    this.options.onChanged();
+  }
+
+  private remoteError(error: unknown): void {
+    if (error instanceof RemoteSyncPartialError) this.lastRemote = { at: new Date().toISOString(), ...error.result, error: error.message };
+    else this.lastRemote = { at: new Date().toISOString(), pushed: 0, pulled: 0, conflicts: 0, rejected: 0, error: (error as Error).message };
+    this.options.onChanged();
+  }
+
   private async startApi(): Promise<void> {
     const { lan } = this.apiStatus;
     const api = createApiServer(this.memory, {
       version: this.options.version,
       port: this.options.port,
       lan,
+      webRoot: this.options.webRoot ?? undefined,
+      // In LAN mode, pages opened from this computer's network addresses may call the API too.
+      webOrigins: lan && this.options.port ? lanUrls(this.options.port).map((url) => new URL(url).origin) : [],
+      aiProvider: () => this.provider(),
       afterWrite: () => {
         this.indexer?.kick();
         this.enricher?.kick();
+        this.organizer?.kick();
         this.options.onChanged();
       },
     });

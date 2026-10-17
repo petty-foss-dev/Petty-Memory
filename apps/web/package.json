@@ -1,0 +1,26 @@
+{
+  "name": "@enve-memory/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@enve-memory/ai": "0.1.0",
+    "@enve-memory/api": "0.1.0",
+    "@enve-memory/core": "0.1.0",
+    "@enve-memory/embeddings": "0.1.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "vendor": "node vendor.mjs",
+    "build": "node build.mjs",
+    "start": "node build.mjs && node server.ts",
+    "check": "node build.mjs && for f in server.ts build.mjs public/*.js; do node --check \"$f\" || exit 1; done && tsc -p tsconfig.json && npm test",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@enve-memory/editor": "0.1.0"
+  }
+}

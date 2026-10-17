@@ -6,16 +6,25 @@ import { FileService } from './files.ts';
 import { Context } from './context.ts';
 import { IN_MEMORY, openDatabase, schemaVersion } from './db.ts';
 import { DecisionService } from './decisions.ts';
+import { EditorService } from './editor.ts';
 import { EmbeddingService } from './embeddings.ts';
 import { ExportService } from './export.ts';
+import { FeedService } from './feed.ts';
 import { ItemService, MAX_LIMIT } from './items.ts';
+import { OutlineService } from './outline.ts';
 import { type MemoryPaths, defaultHome, pathsFor } from './paths.ts';
-import { ProjectService } from './projects.ts';
+import { ProjectService, captureMemoryVersions } from './projects.ts';
 import { SearchService } from './search.ts';
 import { RuleService } from './rules.ts';
 import { SettingsService } from './settings.ts';
 import { SyncService } from './sync.ts';
 import { TaskService } from './tasks.ts';
+import { EditService } from './edits.ts';
+import { PresentationService } from './presentation.ts';
+import { ReferenceService } from './references.ts';
+import { ShareService } from './shares.ts';
+import { VaultService } from './vault.ts';
+import { VersionService, captureVersions } from './versions.ts';
 import { type Graph, ITEM_TYPES, type ItemType, type ProjectBriefing, type RelationKind } from './types.ts';
 
 export interface OpenOptions {
@@ -33,6 +42,7 @@ export class EnveMemory {
   readonly projects: ProjectService;
   readonly settings: SettingsService;
   readonly items: ItemService;
+  readonly outline: OutlineService;
   readonly tasks: TaskService;
   readonly decisions: DecisionService;
   readonly embeddings: EmbeddingService;
@@ -44,6 +54,14 @@ export class EnveMemory {
   readonly sync: SyncService;
   readonly rules: RuleService;
   readonly files: FileService;
+  readonly presentation: PresentationService;
+  readonly versions: VersionService;
+  readonly references: ReferenceService;
+  readonly edits: EditService;
+  readonly vault: VaultService;
+  readonly shares: ShareService;
+  readonly editor: EditorService;
+  readonly feed: FeedService;
   private readonly db: DatabaseSync;
   private readonly ctx: Context;
 
@@ -60,6 +78,7 @@ export class EnveMemory {
     this.projects = new ProjectService(this.ctx);
     this.settings = new SettingsService(this.ctx);
     this.items = new ItemService(this.ctx, this.projects, this.settings);
+    this.outline = new OutlineService(this.ctx, this.items);
     this.tasks = new TaskService(this.ctx, this.items, this.projects);
     this.decisions = new DecisionService(this.ctx, this.items, this.projects);
     this.embeddings = new EmbeddingService(this.ctx);
@@ -72,6 +91,18 @@ export class EnveMemory {
     this.rules = new RuleService(this.ctx, this.items, this.projects);
     this.items.afterSave = (id) => this.rules.apply(id);
     this.files = new FileService(this.ctx, this.items);
+    this.presentation = new PresentationService(this.ctx, this.items, this.tasks);
+    this.versions = new VersionService(this.ctx);
+    this.ctx.captureVersions = (items, projects) => {
+      if (items.size) captureVersions(this.ctx, items);
+      if (projects.size) captureMemoryVersions(this.ctx, projects);
+    };
+    this.references = new ReferenceService(this.ctx, this.items);
+    this.edits = new EditService(this.ctx, this.items, this.outline, this.presentation, this.versions);
+    this.vault = new VaultService(this.ctx, this.items, this.versions);
+    this.shares = new ShareService(this.ctx, this.items);
+    this.editor = new EditorService(this.ctx, this.items, this.outline, this.presentation);
+    this.feed = new FeedService(this.ctx, this.items, this.projects);
   }
 
   get actor(): string {
@@ -165,6 +196,7 @@ export class EnveMemory {
   }
 
   close(): void {
+    this.vault.lock();
     this.db.close();
   }
 }

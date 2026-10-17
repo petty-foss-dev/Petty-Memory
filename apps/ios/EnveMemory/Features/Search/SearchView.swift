@@ -18,20 +18,26 @@ final class SearchModel {
     private(set) var error: String?
     private(set) var searchedKey: Key?
     private(set) var isSearching = false
+    /// Set when the results are an earlier answer to the same search, saved on this phone.
+    private(set) var cachedAt: Date?
 
     var key: Key { Key(query: query.trimmingCharacters(in: .whitespacesAndNewlines), type: type, projectID: projectID) }
 
-    func run(_ key: Key, client: APIClient?) async {
-        guard let client, !key.query.isEmpty else {
+    func run(_ key: Key, connection: Connection) async {
+        guard connection.client != nil, !key.query.isEmpty else {
             hits = []
             searchedKey = nil
+            cachedAt = nil
             return
         }
         do {
             try await Task.sleep(for: .milliseconds(300))
             isSearching = true
             defer { isSearching = false }
-            hits = try await client.search(key.query, filter: ItemFilter(project: key.projectID, type: key.type, limit: 40))
+            let loaded = try await connection.load(.search(key.query, filter: ItemFilter(project: key.projectID, type: key.type, limit: 40)),
+                                                   as: [SearchHit].self)
+            hits = loaded.value
+            cachedAt = loaded.cachedAt
             error = nil
             searchedKey = key
         } catch is CancellationError {
@@ -73,8 +79,8 @@ struct SearchView: View {
             filters
             results
         }
-        .task(id: model.key) { await model.run(model.key, client: connection.client) }
-        .task { try? await projects.load(connection.client) }
+        .task(id: model.key) { await model.run(model.key, connection: connection) }
+        .task { _ = try? await projects.load(connection) }
         .onAppear { if model.query.isEmpty { focused = true } }
     }
 
@@ -105,8 +111,9 @@ struct SearchView: View {
     @ViewBuilder
     private var results: some View {
         if let error = model.error {
-            ErrorBanner(message: error) { Task { await model.run(model.key, client: connection.client) } }
+            ErrorBanner(message: error) { Task { await model.run(model.key, connection: connection) } }
         }
+        if let cachedAt = model.cachedAt, !model.key.query.isEmpty { CachedBanner(savedAt: cachedAt) }
         if model.key.query.isEmpty {
             EmptyStateView(symbol: "sparkle.magnifyingglass", title: "Search your memory",
                            message: "Finds exact words and, when semantic search is on, things that mean the same.")

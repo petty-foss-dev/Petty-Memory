@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(Connection.self) private var connection
     @Environment(OutboxService.self) private var outbox
+    @Environment(OfflineSync.self) private var offline
     @Environment(Router.self) private var router
     @Environment(ThemeManager.self) private var theme
     @Environment(\.hearth) private var hearth
@@ -14,7 +15,9 @@ struct SettingsView: View {
     var body: some View {
         HearthScreen(title: "Settings") {
             server
+            offlineCopy
             outboxSection
+            privacy
             appearance
             about
         }
@@ -102,6 +105,21 @@ struct SettingsView: View {
                         .disabled(outbox.isFlushing)
                 }
             }
+            ForEach(outbox.notices) { notice in
+                HearthCard(padding: HearthSpacing.md) {
+                    HStack(alignment: .top, spacing: HearthSpacing.md) {
+                        TypeGlyph(symbol: "exclamationmark.triangle", tint: hearth.danger)
+                        Text(notice.message)
+                            .font(HearthFont.footnote)
+                            .foregroundStyle(hearth.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Dismiss") { Task { await outbox.dismiss(notice) } }
+                            .font(HearthFont.subheadline)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("OutboxNotice")
+            }
             if outbox.entries.isEmpty {
                 HearthCard(padding: HearthSpacing.md) {
                     Label("Everything is synced.", systemImage: "checkmark.circle")
@@ -113,10 +131,80 @@ struct SettingsView: View {
                 RowStack(data: outbox.entries) { entry in
                     OutboxRow(entry: entry,
                               retry: { Task { await outbox.retry(entry) } },
-                              remove: { Task { await outbox.remove(entry) } })
+                              remove: { Task { await outbox.remove(entry) } },
+                              saveDraft: entry.recoverableDraft.map { edit in { saveDraft(entry, edit) } })
                 }
             }
         }
+    }
+
+    private var offlineCopy: some View {
+        VStack(alignment: .leading, spacing: HearthSpacing.sm) {
+            Overline("Offline copy")
+            HearthCard(padding: HearthSpacing.md) {
+                HStack(alignment: .top, spacing: HearthSpacing.md) {
+                    TypeGlyph(symbol: "externaldrive")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(offlineHeadline).font(HearthFont.subheadline)
+                        Text(offlineDetail).font(HearthFont.caption).foregroundStyle(hearth.textSecondary)
+                        if let error = offline.lastError {
+                            Text(error).font(HearthFont.caption).foregroundStyle(hearth.danger)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if offline.isRefreshing { ProgressView() }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("OfflineCopyStatus")
+            }
+        }
+    }
+
+    private var offlineHeadline: String {
+        guard let summary = offline.summary, summary.items > 0 else { return "Not saved yet" }
+        return "\(summary.items.formatted()) items · \(summary.projects.formatted()) projects"
+    }
+
+    private var offlineDetail: String {
+        guard let summary = offline.summary else { return "Saved while you're connected, so you can browse and search without your server." }
+        if summary.isBuilding {
+            return "Saving your library for offline use. Items saved so far already open offline; browsing, lists and search follow once it's complete."
+        }
+        let updated = summary.refreshedAt.map { "Updated \($0.formatted(.relative(presentation: .named)))" } ?? "Waiting for the first full copy"
+        return "\(updated). Browse, open and search it offline; secret notes and AI results are never saved."
+    }
+
+    private var privacy: some View {
+        VStack(alignment: .leading, spacing: HearthSpacing.sm) {
+            Overline("Vault and sharing")
+            HearthCard(padding: HearthSpacing.md) {
+                VStack(alignment: .leading, spacing: HearthSpacing.md) {
+                    Button { router.open(.vault) } label: {
+                        settingsRow("Vault", detail: connection.canUseVault ? "Secret notes, encrypted on this phone"
+                                                                             : "Needs a pairing with the “secrets” permission",
+                                    symbol: "lock")
+                    }
+                    HearthDivider()
+                    Button { router.open(.shares) } label: {
+                        settingsRow("Public links", detail: "See and revoke read-only links", symbol: "link")
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func settingsRow(_ title: String, detail: String, symbol: String) -> some View {
+        HStack(spacing: HearthSpacing.md) {
+            TypeGlyph(symbol: symbol)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(HearthFont.subheadline)
+                Text(detail).font(HearthFont.caption).foregroundStyle(hearth.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(hearth.textTertiary)
+        }
+        .contentShape(Rectangle())
     }
 
     private var appearance: some View {
@@ -144,7 +232,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: HearthSpacing.sm) {
                     Text("Petty Memory \(Bundle.main.shortVersion)")
                         .font(HearthFont.cardTitle)
-                    Text("Your library stays on your computer. This phone keeps only its pairing token, in the Keychain, and an outbox of captures waiting to sync.")
+                    Text("Your library stays on your computer. This phone keeps its pairing token in the Keychain, an outbox of changes waiting to sync, and a copy of your ordinary notes, links, tasks and projects so you can read and search them offline. Secret notes are never in that copy, and their text, your passphrase, history, public links and AI results are never kept on the phone. Unpairing or pairing again deletes the copy.")
                         .font(HearthFont.footnote)
                         .foregroundStyle(hearth.textSecondary)
                     Text("Free software under AGPL-3.0.")
@@ -164,6 +252,19 @@ struct SettingsView: View {
         }
     }
 
+    /// Keeps a refused offline edit as its own note; the original entry goes only once the copy is sent or queued.
+    private func saveDraft(_ entry: OutboxEntry, _ edit: ItemUpdate) {
+        let title = edit.title ?? edit.baseTitle ?? ""
+        let request = NewItemRequest(type: .note, title: title.isEmpty ? "Recovered draft" : "\(title) (draft)",
+                                     body: edit.body ?? edit.baseBody ?? "")
+        Task {
+            guard let endpoint = try? Endpoint.createItem(request) else { return }
+            if router.report(await outbox.submit(endpoint, kind: .note, title: "Recovered draft"), sent: "Draft saved as a new note") {
+                await outbox.remove(entry)
+            }
+        }
+    }
+
     private func unpair() {
         do {
             try connection.unpair()
@@ -177,6 +278,7 @@ private struct OutboxRow: View {
     let entry: OutboxEntry
     let retry: () -> Void
     let remove: () -> Void
+    let saveDraft: (() -> Void)?
 
     @Environment(\.hearth) private var hearth
 
@@ -199,6 +301,9 @@ private struct OutboxRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Menu {
+                if let saveDraft {
+                    Button("Save draft as new note", systemImage: "doc.badge.plus", action: saveDraft)
+                }
                 Button("Retry now", systemImage: "arrow.clockwise", action: retry)
                 Button("Discard", systemImage: "trash", role: .destructive, action: remove)
             } label: {
@@ -219,6 +324,7 @@ private struct OutboxRow: View {
         case .link: "link"
         case .task: "checkmark.circle"
         case .file: "doc"
+        case .edit: "pencil"
         }
     }
 

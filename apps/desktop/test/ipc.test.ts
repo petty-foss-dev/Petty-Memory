@@ -11,7 +11,7 @@ const echoHandlers = Object.fromEntries(methods.map((m) => [m, (...args: unknown
 test('the allow-list names every method once, each with a known kind', () => {
   assert.equal(new Set(methods).size, methods.length);
   for (const method of methods) {
-    assert.match(method, /^[a-z]+\.[a-zA-Z]+$/);
+    assert.match(method, /^[a-z][a-zA-Z]*\.[a-zA-Z]+$/);
     assert.ok(METHOD_KINDS[method] === 'read' || METHOD_KINDS[method] === 'write');
   }
   assert.deepEqual([...EVENTS].sort(), ['changed', 'command', 'open']);
@@ -24,6 +24,22 @@ test('mutating calls are marked as writes so windows refresh and workers run', (
   for (const method of ['items.get', 'items.list', 'search.hybrid', 'activity.recent', 'app.info', 'shelves.counts', 'shelves.list', 'reminders.list'] as Method[]) {
     assert.equal(METHOD_KINDS[method], 'read', method);
   }
+});
+
+test('outline placement and note creation are writes; browsing the outline is a read', () => {
+  assert.equal(METHOD_KINDS['outline.move'], 'write');
+  assert.equal(METHOD_KINDS['outline.createNote'], 'write');
+  for (const method of ['outline.children', 'outline.get', 'outline.ancestors'] as Method[]) assert.equal(METHOD_KINDS[method], 'read', method);
+});
+
+test('journalled editor actions and their undo and redo are writes', () => {
+  for (const method of ['editor.apply', 'editor.undo', 'editor.redo'] as Method[]) assert.equal(METHOD_KINDS[method], 'write', method);
+  assert.equal(METHOD_KINDS['projects.memoryHistory'], 'read');
+});
+
+test('encrypted files, recovery and vault history are allow-listed with the right kinds', () => {
+  for (const method of ['vault.attachFiles', 'vault.removeFile', 'vault.recover', 'vault.restoreVersion'] as Method[]) assert.equal(METHOD_KINDS[method], 'write', method);
+  for (const method of ['vault.outline', 'vault.files', 'vault.saveFile', 'vault.recoveryKit'] as Method[]) assert.equal(METHOD_KINDS[method], 'read', method);
 });
 
 test('isMethod rejects inherited and made-up names', () => {

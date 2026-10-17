@@ -8,7 +8,7 @@ Requires Node 24 or newer (26 recommended).
 
 ```bash
 npm install
-npm run check                          # typecheck + every package's tests + extension and desktop unit tests
+npm run check                          # typecheck + package, extension, desktop and browser checks
 npm run demo -- ~/em-demo              # a realistic demo library to play with
 npm run cli -- --home ~/em-demo project show garage
 ```
@@ -20,6 +20,7 @@ Node runs the TypeScript sources directly (type stripping), so the engine has no
 | Engine, CLI, MCP, API | `packages/*` | `npm run check` |
 | Desktop app (Electron) | `apps/desktop` | `npm --prefix apps/desktop run dev`, `run test:e2e`, `run dist:mac` |
 | Browser extension | `apps/extension` | `npm --prefix apps/extension test`, `run test:e2e` |
+| Browser client and self-host launcher | `apps/web` | `npm run web -- --home ~/em-demo`, `npm run check:web` |
 | iOS app | `apps/ios` | `xcodegen generate` and Xcode; `xcrun swift test` in `Packages/EnveMemoryKit` |
 
 ## Layout

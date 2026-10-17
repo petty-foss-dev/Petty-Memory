@@ -17,7 +17,8 @@ const OPS: Record<string, string> = {
   create: 'created', update: 'edited', archive: 'archived', unarchive: 'unarchived', delete: 'deleted', tag: 'retagged',
   set_memory: 'updated the memory of', ingest: 'archived the source of', attach: 'attached a file to', enrich: 'suggested tags for',
   accept: 'accepted suggestions for', pin: 'pinned', unpin: 'unpinned', open: 'opened', remind: 'set a reminder on',
-  reminded: 'sent the reminder for', intent: 'changed the intent of',
+  reminded: 'sent the reminder for', intent: 'changed the intent of', detach: 'removed a file from',
+  undo: 'undid an edit to', redo: 'redid an edit to',
 };
 
 const describe = (change: Change) =>

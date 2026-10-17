@@ -6,3 +6,7 @@ DerivedData/
 Packages/EnveMemoryKit/.build/
 Packages/EnveMemoryKit/.swiftpm/
 .DS_Store
+# Built from packages/editor by scripts/build-editor.sh.
+EnveMemory/Resources/Editor/editor.js
+EnveMemory/Resources/Editor/editor.css
+EnveMemory/Resources/Editor/editor-licenses.txt

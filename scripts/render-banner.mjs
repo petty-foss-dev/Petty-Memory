@@ -13,28 +13,28 @@ mkdirSync(out, { recursive: true });
 const logo = image('apps/desktop/build/icon.png');
 const desktop = image('docs/screenshots/desktop/project.png');
 const panel = image('docs/screenshots/extension/sidepanel.png');
-const phone = image('docs/screenshots/ios/home.png');
+const phone = image('docs/screenshots/parity/ios-home-dark.png');
 
 const page = ({ width, height, title, tagline, compact }) => `<!doctype html>
 <html><head><style>
   * { box-sizing: border-box; margin: 0; }
   body {
     width: ${width}px; height: ${height}px; overflow: hidden; position: relative;
-    background: radial-gradient(1200px 700px at 78% 30%, #3a2716 0%, #1b1511 55%, #120e0b 100%);
-    font-family: -apple-system, "SF Pro Display", "Segoe UI", sans-serif; color: #f1e7d6;
+    background: radial-gradient(1200px 700px at 78% 30%, #173238 0%, #12191d 55%, #0e1113 100%);
+    font-family: -apple-system, "SF Pro Display", "Segoe UI", sans-serif; color: #e6ebee;
   }
   .glow { position: absolute; width: 640px; height: 640px; right: 18%; top: 8%; border-radius: 50%;
-    background: radial-gradient(circle, rgba(245,146,26,.28), rgba(245,146,26,0) 65%); }
+    background: radial-gradient(circle, rgba(79,193,201,.24), rgba(79,193,201,0) 65%); }
   .copy { position: absolute; left: ${compact ? 64 : 88}px; top: ${compact ? 72 : 110}px; width: ${compact ? 470 : 560}px; }
   .brand { display: flex; align-items: center; gap: 18px; margin-bottom: ${compact ? 26 : 34}px; }
   .brand img { width: ${compact ? 64 : 76}px; height: ${compact ? 64 : 76}px; }
   .brand span { font-family: "New York", "Iowan Old Style", Georgia, serif; font-size: ${compact ? 40 : 46}px; letter-spacing: -.5px; }
   h1 { font-family: "New York", "Iowan Old Style", Georgia, serif; font-weight: 500; font-size: ${compact ? 44 : 56}px;
     line-height: 1.08; letter-spacing: -1px; margin-bottom: 22px; }
-  h1 em { font-style: normal; color: #f5921a; }
-  p { font-size: ${compact ? 19 : 22}px; line-height: 1.5; color: #cdbfa9; max-width: 520px; }
+  h1 em { font-style: normal; color: #4fc1c9; }
+  p { font-size: ${compact ? 19 : 22}px; line-height: 1.5; color: #aeb8be; max-width: 520px; }
   .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
-  .chips span { font-size: 15px; padding: 7px 13px; border-radius: 999px; border: 1px solid #4a3b2c; color: #e3d5bf; background: rgba(255,255,255,.03); }
+  .chips span { font-size: 15px; padding: 7px 13px; border-radius: 999px; border: 1px solid #4b565d; color: #e6ebee; background: rgba(255,255,255,.03); }
   .shot { position: absolute; border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07); }
   .shot img { display: block; width: 100%; }
   .desktop { width: ${compact ? 700 : 1000}px; left: ${compact ? 560 : 720}px; top: ${compact ? 92 : 120}px; }

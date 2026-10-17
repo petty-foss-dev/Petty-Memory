@@ -1,3 +1,4 @@
+import EnveMemoryKit
 import SwiftUI
 
 /// Block-level Markdown, parsed once so long archived articles don't re-parse on every render.
@@ -166,11 +167,72 @@ struct MarkdownDocument: Equatable {
     }
 }
 
-/// Renders saved Markdown as a quiet reading column. Only web links are followed: saved text is data.
+private struct ReferenceTitlesKey: EnvironmentKey {
+    static let defaultValue: [String: String] = [:]
+}
+
+extension EnvironmentValues {
+    /// Current names of referenced items, so inline references show what the target is called now.
+    var referenceTitles: [String: String] {
+        get { self[ReferenceTitlesKey.self] }
+        set { self[ReferenceTitlesKey.self] = newValue }
+    }
+}
+
+/// `[[item:<id>|label]]` becomes an in-app link; everything around it stays text.
+enum InlineReferences {
+    static func attributed(_ text: String, titles: [String: String], accent: Color,
+                           segment: (String) -> AttributedString = { AttributedString($0) }) -> AttributedString {
+        var result = AttributedString()
+        var cursor = text.startIndex
+        for match in InlineReference.matches(in: text) {
+            result += segment(String(text[cursor..<match.range.lowerBound]))
+            var link = AttributedString(titles[match.id] ?? match.label.flatMap { $0.isEmpty ? nil : $0 } ?? "Linked item")
+            link.link = ItemLink.url(for: match.id)
+            link.foregroundColor = accent
+            link.underlineStyle = .single
+            result += link
+            cursor = match.range.upperBound
+        }
+        result += segment(String(text[cursor...]))
+        return result
+    }
+}
+
+/// Saved text is data: only web links leave the app, and item references navigate inside it.
+private struct SafeLinks: ViewModifier {
+    @Environment(Router.self) private var router
+
+    func body(content: Content) -> some View {
+        content.environment(\.openURL, OpenURLAction { url in
+            if let id = ItemLink.itemID(from: url) {
+                router.open(.item(id))
+                return .handled
+            }
+            return ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
+        })
+    }
+}
+
+/// Plain text with inline references as links, for previews where Markdown blocks would be too much.
+struct ReferenceText: View {
+    let text: String
+
+    @Environment(\.referenceTitles) private var titles
+    @Environment(\.hearth) private var hearth
+
+    var body: some View {
+        Text(InlineReferences.attributed(text, titles: titles, accent: hearth.accent))
+            .modifier(SafeLinks())
+    }
+}
+
+/// Renders saved Markdown as a quiet reading column.
 struct MarkdownView: View {
     let document: MarkdownDocument
 
     @Environment(\.hearth) private var hearth
+    @Environment(\.referenceTitles) private var titles
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: HearthSpacing.md) {
@@ -178,9 +240,7 @@ struct MarkdownView: View {
                 block(document.blocks[index])
             }
         }
-        .environment(\.openURL, OpenURLAction { url in
-            ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") ? .systemAction : .discarded
-        })
+        .modifier(SafeLinks())
     }
 
     @ViewBuilder
@@ -253,6 +313,10 @@ struct MarkdownView: View {
     }
 
     private func inline(_ text: String) -> AttributedString {
+        InlineReferences.attributed(text, titles: titles, accent: hearth.accent, segment: markdown)
+    }
+
+    private func markdown(_ text: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace, failurePolicy: .returnPartiallyParsedIfPossible)
         var attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
         for run in attributed.runs {

@@ -3,7 +3,11 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { context } from 'esbuild';
 import { createServer } from 'vite';
+import { buildEditor } from '@enve-memory/editor/build';
 import { root, targets } from './bundle.mjs';
+
+// In development the API serves apps/web/public directly, so the browser client's editor bundle is built there.
+await buildEditor(join(root, '..', 'web', 'public', 'vendor'));
 
 const electron = createRequire(import.meta.url)('electron');
 const server = await createServer({ configFile: join(root, 'vite.config.ts') });

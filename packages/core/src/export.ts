@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { blobPath } from './blobs.ts';
 import { type Context, slugify } from './context.ts';
 import { invalid } from './errors.ts';
@@ -9,7 +9,8 @@ import type { DecisionService } from './decisions.ts';
 import type { ItemDetail, Project } from './types.ts';
 
 export const EXPORT_FORMAT = 'enve-memory-export';
-export const EXPORT_VERSION = 1;
+/** 2: each item carries `parentId` and `sortOrder`. */
+export const EXPORT_VERSION = 2;
 
 export interface ExportSummary {
   path: string;
@@ -44,6 +45,11 @@ export class ExportService {
     const projects = this.ctx.all<{ id: string }>(`SELECT id FROM projects ORDER BY name`).map((p) => this.projects.resolve(p.id));
     const ids = this.ctx.all<{ id: string }>(`SELECT id FROM items ORDER BY seq`).map((r) => r.id);
     const items = ids.map((id) => this.items.get(id));
+    const placement = new Map(this.ctx
+      .all<{ id: string; parent_id: string | null; sort_order: number }>(`SELECT id, parent_id, sort_order FROM items`)
+      .map((r) => [r.id, { parentId: r.parent_id, sortOrder: r.sort_order }]));
+    const written = new Map<string, string>();
+    const noteWritten = (item: ItemDetail, path: string) => written.set(item.id, relative(destination, path).split(sep).join('/'));
     let files = 0;
 
     // Slugs and filenames can come from other devices through sync: re-derive them so nothing escapes the export folder.
@@ -80,8 +86,11 @@ export class ExportService {
       }
       const names = new Set<string>();
       for (const item of members) {
-        if (item.type === 'note') writeUnique(join(dir, 'notes'), `${fileSlug(item)}.md`, names, document(item, item.body));
-        if (item.type === 'bookmark' && item.content) writeUnique(join(dir, 'archive'), `${fileSlug(item)}.md`, names, document(item, item.content));
+        const parentId = placement.get(item.id)!.parentId;
+        if (item.type === 'note') noteWritten(item, writeUnique(join(dir, 'notes'), `${fileSlug(item)}.md`, names, document(item, parentId, item.body)));
+        if (item.type === 'bookmark' && item.content) {
+          noteWritten(item, writeUnique(join(dir, 'archive'), `${fileSlug(item)}.md`, names, document(item, parentId, item.content)));
+        }
         for (const attachment of item.attachments) {
           const source = blobPath(this.ctx, attachment.sha256);
           if (!existsSync(source)) continue;
@@ -101,10 +110,11 @@ export class ExportService {
       exportedAt: this.ctx.now(),
       deviceId: this.ctx.deviceId,
       projects,
-      items,
+      items: items.map((item) => ({ ...item, ...placement.get(item.id)! })),
       tags,
       relations,
     }, null, 2));
+    if (items.length) writeFileSync(join(destination, 'outline.md'), outlineDocument(items, placement, written));
     writeFileSync(join(destination, 'README.md'), exportReadme(projects.length, items.length));
     return { path: destination, projects: projects.length, items: items.length, files };
   }
@@ -120,12 +130,40 @@ function projectReadme(name: string, project: Project | null): string {
   return `${parts.join('\n\n')}\n`;
 }
 
-function document(item: ItemDetail, text: string): string {
+/** The whole library as one nested list in its saved order, linking each item to its exported file or address. */
+function outlineDocument(items: ItemDetail[], placement: Map<string, { parentId: string | null; sortOrder: number }>, written: Map<string, string>): string {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const ordered = [...items].sort((a, b) => placement.get(a.id)!.sortOrder - placement.get(b.id)!.sortOrder || (a.id < b.id ? -1 : 1));
+  const children = new Map<string | null, ItemDetail[]>();
+  for (const item of ordered) {
+    const parentId = placement.get(item.id)!.parentId;
+    const key = parentId !== null && byId.has(parentId) ? parentId : null;
+    children.set(key, [...(children.get(key) ?? []), item]);
+  }
+  const lines: string[] = [];
+  const stack = (children.get(null) ?? []).map((item) => ({ item, depth: 0 })).reverse();
+  for (let next = stack.pop(); next; next = stack.pop()) {
+    const { item, depth } = next;
+    const label = (item.title || item.body.split('\n')[0]!.slice(0, 80) || item.url || item.type).replace(/[[\]\\]/g, '\\$&');
+    const target = written.get(item.id) ?? item.url;
+    const notes = [
+      item.type !== 'note' && (item.type === 'bookmark' ? 'link' : item.type),
+      item.task && item.task.status !== 'open' && item.task.status.replace('_', ' '),
+      item.archivedAt && 'archived',
+    ].filter(Boolean);
+    lines.push(`${'  '.repeat(depth)}- ${target ? `[${label}](<${target.replace(/[<>]/g, encodeURIComponent)}>)` : label}${notes.length ? ` _(${notes.join(', ')})_` : ''}`);
+    stack.push(...(children.get(item.id) ?? []).map((child) => ({ item: child, depth: depth + 1 })).reverse());
+  }
+  return `# Outline\n\nEverything in the library as one tree, in its saved order.\n\n${lines.join('\n')}\n`;
+}
+
+function document(item: ItemDetail, parentId: string | null, text: string): string {
   const front: Record<string, string | string[] | undefined> = {
     id: item.id,
     type: item.type,
     title: item.title || undefined,
     url: item.url ?? undefined,
+    parent: parentId ?? undefined,
     created: item.createdAt,
     updated: item.updatedAt,
     source: item.source,
@@ -154,9 +192,11 @@ function uniqueName(dir: string, name: string, taken: Set<string>): string {
   return join(dir, candidate);
 }
 
-function writeUnique(dir: string, name: string, taken: Set<string>, text: string): void {
+function writeUnique(dir: string, name: string, taken: Set<string>, text: string): string {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(uniqueName(dir, name, taken), text);
+  const path = uniqueName(dir, name, taken);
+  writeFileSync(path, text);
+  return path;
 }
 
 function exportReadme(projects: number, items: number): string {
@@ -166,7 +206,8 @@ ${projects} projects and ${items} items, exported ${new Date().toISOString()}.
 
 - \`projects/<name>/README.md\`: the project's description, standing instructions and memory document.
 - \`decisions.md\`, \`tasks.md\` and \`links.md\` in each project folder: the decision log, the task list and the bookmarks.
-- \`notes/\`: one Markdown file per note, with YAML front matter.
+- \`outline.md\`: every item as one nested list, in the order and nesting it has in the library.
+- \`notes/\`: one Markdown file per note, with YAML front matter (\`parent\` is the id of the item it's nested under).
 - \`archive/\`: the readable text saved from each bookmarked page.
 - \`files/\`: the original files and images.
 - \`projects/inbox/\`: everything that isn't in a project.

@@ -50,6 +50,17 @@
                ReferencedContainer = "container:Packages/EnveMemoryKit">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "5D9B809F5E670066F9DB95D7"
+               BuildableName = "EnveMemoryUITests.xctest"
+               BlueprintName = "EnveMemoryUITests"
+               ReferencedContainer = "container:EnveMemory.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

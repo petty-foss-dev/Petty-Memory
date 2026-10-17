@@ -32,7 +32,7 @@ struct ShareView: View {
                         Label {
                             Text(message).foregroundStyle(hearth.textPrimary)
                         } icon: {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(hearth.accent)
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(hearth.accentText)
                         }
                             .font(HearthFont.headline)
                             .frame(maxWidth: .infinity)
@@ -106,7 +106,7 @@ private struct SharePreview: View {
             HStack(alignment: .top, spacing: HearthSpacing.md) {
                 Image(systemName: symbol)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(hearth.accent)
+                    .foregroundStyle(hearth.accentText)
                     .frame(width: 34, height: 34)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(hearth.accentMuted))
                 VStack(alignment: .leading, spacing: 2) {

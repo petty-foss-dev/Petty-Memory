@@ -5,12 +5,15 @@ import type { AppInfo, ProjectSummary, Shelf } from '../shared/ipc.ts';
 export type LibraryType = Exclude<ItemType, 'task' | 'decision'>;
 
 export type SettingsSection =
-  | 'library' | 'mcp' | 'devices' | 'search' | 'ai' | 'automations' | 'sync' | 'import' | 'backups' | 'export' | 'appearance' | 'about';
+  | 'library' | 'mcp' | 'devices' | 'search' | 'ai' | 'automations' | 'sync' | 'vault' | 'sharing' | 'import' | 'backups' | 'export'
+  | 'appearance' | 'about';
 
 export type Route =
   | { view: 'home' }
   | { view: 'inbox' }
   | { view: 'library'; type?: LibraryType }
+  | { view: 'outline'; reveal?: string }
+  | { view: 'highlights' }
   | { view: 'project'; id: string; supersede?: string }
   | { view: 'tasks' }
   | { view: 'ask' }

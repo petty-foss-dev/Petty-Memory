@@ -104,3 +104,20 @@ enum Fixture {
     }
 }
 
+/// A fresh, not-yet-created folder under the temporary directory.
+enum TestDirectory {
+    static func make(_ prefix: String) -> URL {
+        FileManager.default.temporaryDirectory.appending(path: "\(prefix)-\(UUID().uuidString)", directoryHint: .isDirectory)
+    }
+}
+
+/// A minimal server-shaped item; `extra` is spliced into the object verbatim.
+func itemJSON(id: String, type: String = "note", title: String = "t", body: String = "", metadata: String = "{}", extra: String = "") -> String {
+    let tail = extra.isEmpty ? "" : ",\(extra)"
+    return #"{"id":"\#(id)","type":"\#(type)","title":"\#(title)","body":"\#(body)","url":null,"project":null,"source":"app","metadata":\#(metadata),"createdAt":"2026-10-01T08:00:00.000Z","updatedAt":"2026-10-02T09:30:00.000Z","archivedAt":null,"tags":[]\#(tail)}"#
+}
+
+func bodyString(_ endpoint: Endpoint) throws -> String {
+    String(decoding: try #require(endpoint.body), as: UTF8.self)
+}
+

@@ -1,6 +1,6 @@
 # Sync
 
-Petty Memory syncs a library between computers through a **folder you already sync**: iCloud Drive, Dropbox, OneDrive, Syncthing or a NAS share. There's no server of ours in the middle. Phones don't sync; they talk to a computer's local API (see [SECURITY.md](SECURITY.md)).
+Petty Memory syncs a library between computers through a **folder you already sync**: iCloud Drive, Dropbox, OneDrive, Syncthing or a NAS share, or, optionally, **through a Petty Memory server you run yourself** (see [Syncing through a server](#syncing-through-a-server)). There's no server of ours in the middle, and no managed service exists. Phones and browsers don't replicate the library; they are API clients of the computer or server that holds it (see [SECURITY.md](SECURITY.md)).
 
 ```bash
 petty-memory sync ~/Library/Mobile\ Documents/com~apple~CloudDocs/Enve\ Memory   # set the folder and sync now
@@ -38,7 +38,7 @@ A record also carries `base`: the version the writing device had last exchanged 
 
 - Records apply projects first, then items, then relations, in clock order.
 - If the local version is the same or newer, the record is skipped. Otherwise the remote state is upserted. Tags, the task, and attachments are replaced to match.
-- **Concurrent edits** are when the record's `base` isn't our current version: both sides changed the entity since they last agreed. The newer stamp wins everywhere, and the losing text of a note body or a project memory is kept as a new note titled "Conflicting edit of …", filed in the same project. Other fields (title, tags, status) are last-writer-wins.
+- **Concurrent edits** are when the record's `base` isn't our current version: both sides changed the entity since they last agreed. The newer stamp wins. When an incoming ordinary edit wins, the local losing body is copied to "Conflicting edit of …" in the same project. An older ordinary edit that arrives after a newer one is retained in that item's history. Secret conflicts keep the ciphertext under the original item id in history, so its authenticated binding still opens. Project memory keeps losing text in a conflict note. Other fields (tags, status) are last-writer-wins.
 - **Deletes** are tombstones: a newer delete removes the item everywhere, and a newer edit beats an older delete.
 - **Same-named projects** created on two devices before their first sync are both kept (one becomes "Garage (2)"). Nothing is merged blindly.
 - Applied changes go into the change log attributed to the remote device and actor, so Activity shows what came from where, and they're never echoed back.
@@ -54,11 +54,33 @@ With a passphrase, everything written to the folder (segments and file blobs) is
 
 The first device to set a passphrase on an empty folder creates the key, and every other device enters the same passphrase. An existing unencrypted folder can't be converted in place; start a new, empty one. Without a passphrase the folder holds readable JSON and files, fine for a folder only you can reach (Syncthing between your own machines), but not ideal for a cloud drive.
 
+## Syncing through a server
+
+Any library served by `petty-memory serve` or the web launcher (`apps/web`) can act as a sync server for other libraries. It's the same engine as folder sync: the same records, validation, clocks, pending references and conflict copies, exchanged over the HTTP API instead of a folder.
+
+On the server, create a token with the `sync` scope. It's never implied by `read` or `write`:
+
+```bash
+petty-memory clients add "Laptop sync" --scope sync
+```
+
+Then on each other computer:
+
+```bash
+PETTY_MEMORY_SYNC_TOKEN=em_… petty-memory sync remote https://server.example:49231   # one exchange
+```
+
+or in the desktop app, Settings → Sync → Sync through a server. The desktop keeps the URL in `desktop.json` and the token in the OS credential store, and watches local changes while long-polling the server (up to 25 seconds per wait). Sync now joins the same exchange; folder sync keeps its periodic schedule.
+
+Each run pushes local changes in pages of 100 (`POST /sync`), uploads their attachment bytes (`PUT /sync/blobs/<sha256>`), then pulls the server's changes from its cursor (`GET /sync`), including what the server received from other devices, and downloads missing bytes. Per-server cursors and pending file hashes live in the library's settings; the token never does. If the server is replaced or restored from a backup, the client starts over from cursor 0, and records already present are skipped. Refused or future-clock pages remain in persistent retry queues while later valid changes continue. Accepted records are acknowledged individually, so editing one after a partial pull does not create a false conflict.
+
+Records travel in the clear apart from secret-note ciphertext, so put the server behind Tailscale or HTTPS. Clients negotiate live waits and body limits through `/sync/capabilities`; older servers fall back to polling. Request limits, bounded live waits, `/healthz`, and retention/recovery guidance are included; see [SELF_HOSTING.md](SELF_HOSTING.md).
+
 ## Not synced
 
-API client tokens, settings (fetch, AI provider, sync folder), automation rules, the semantic index (each device rebuilds its own), and backups.
+API client tokens, public shares, settings (fetch, AI provider, sync folder, sync server), the vault's local check value, automation rules, item history (each device records versions for the changes it applies), the semantic index (each device rebuilds its own), and backups. Secret notes themselves sync as ciphertext.
 
 ## Limitations
 
 - Segments are never compacted, so the shared folder grows with the library's full change history.
-- Computers sync only through a shared folder. There's no direct connection between machines on a LAN.
+- Server sync needs the server reachable. Foreground clients use long-polling, with bounded polling for older servers; there is no direct peer-to-peer transport or background mobile push.

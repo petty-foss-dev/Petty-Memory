@@ -14,9 +14,11 @@ struct ProjectBriefingView: View {
     @State private var memory = MarkdownDocument("")
     @State private var error: String?
     @State private var completing: Set<String> = []
+    @State private var cachedAt: Date?
 
     var body: some View {
         HearthScreen(title: briefing?.project.name, overline: "Project") {
+            if let cachedAt { CachedBanner(savedAt: cachedAt) }
             if let error { ErrorBanner(message: error) { Task { await load() } } }
             if let briefing {
                 content(briefing)
@@ -90,11 +92,12 @@ struct ProjectBriefingView: View {
     }
 
     private func load() async {
-        guard let client = connection.client else { return }
+        guard connection.client != nil else { return }
         do {
-            let loaded = try await client.briefing(projectID)
-            briefing = loaded
-            memory = MarkdownDocument(loaded.project.memory)
+            let loaded = try await connection.load(.briefing(projectID), as: ProjectBriefing.self)
+            briefing = loaded.value
+            cachedAt = loaded.cachedAt
+            memory = MarkdownDocument(loaded.value.project.memory)
             error = nil
         } catch is CancellationError {
             return

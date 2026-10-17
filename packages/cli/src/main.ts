@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
-import { EnveMemory, MemoryError, type RuleConditions, type Settings, defaultHome, listBackups, pathsFor, restoreBackup } from '@enve-memory/core';
-import { AiError, type AiProvider, PROVIDERS, PROVIDER_IDS, ask, createProvider, enrichItem, enrichWorker, envKeys, isProviderId, providerFor } from '@enve-memory/ai';
+import { EnveMemory, MemoryError, type EditProposal, type EditorCommand, type ItemPresentation, type RuleConditions, type Settings, defaultHome, listBackups, pathsFor, restoreBackup } from '@enve-memory/core';
+import { AiError, type AiProvider, PROVIDERS, PROVIDER_IDS, ask, createProvider, enrichItem, enrichWorker, envKeys, isProviderId, organizeWorker, proposeEdit, providerFor } from '@enve-memory/ai';
 import { attachLocalEmbedder, indexWorker } from '@enve-memory/embeddings';
 import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder } from '@enve-memory/importers';
 import { ingestItem, processPending } from '@enve-memory/ingestion';
-import { DEFAULT_PORT, createApiServer, lanUrls, pairingLink } from '@enve-memory/api';
+import { DEFAULT_PORT, RemoteSyncClient, createApiServer, lanUrls, pairingLink } from '@enve-memory/api';
 import { SERVER_NAME, serveMemoryOverStdio } from '@enve-memory/mcp';
 import pkg from '../package.json' with { type: 'json' };
 import * as format from './format.ts';
@@ -41,9 +41,26 @@ Projects
   project show <project>       Briefing: memory, decisions, open tasks, recent items
   project edit <project>       Change                [--name] [--description] [--instructions] [--status]
   project memory <project>     Print the memory document; --set FILE replaces it (- reads stdin)
+  project history <project>    Page through saved memory documents  [--limit] [--offset]
   decide <project> <text…>     Record a decision     [--reason] [--supersedes id]…
 
 Organize
+  outline [parent-id]          Ordered roots or direct children  [--limit] [--offset] [--all]
+  outline show <id>            Placement and ancestor path
+  outline add <title…>         New root or child note  [--parent id] [--body] [-p project] [-t tag]…
+  outline move <id>            Move with descendants  --parent id | --root [--before sibling-id]
+  presentation <id>            Show formatting; --set FILE applies a JSON presentation patch (- reads stdin)
+  check <id> / uncheck <id>    Complete an entry or checklist subtree
+  checklist <id> [reset]       Progress, or reset all descendants
+  history <item-id>            List item/subtree versions  [--limit] [--offset]
+  history show <version-id>    Read a snapshot
+  history restore <version-id> Restore as a new change
+  editor apply <file.json>     Apply a reversible command batch (- reads stdin)
+  editor split <id> <title|body> <offset>  Split a note at a UTF-16 offset
+  editor merge <id> <previous-id>         Merge adjacent notes, preserving history
+  editor undo|redo <action-id>            Undo or redo a journalled edit
+  references <id>              Inline references and backlinks
+  reference <from> <to>        Insert a reference  [--title label]
   edit <id>                    Change an item        [--title] [--body] [--url] [-p project | --no-project]
   task edit <id>               Change a task         [--title] [--notes] [--status] [--due] [--priority] [-p project]
   task done <id>               Complete a task
@@ -52,15 +69,17 @@ Organize
   remind <id> <when…>          "tonight", "tomorrow", "friday", "in 3 days", 2026-10-01…; "remind <id> off" clears
   intent <id> <intent>         read | watch | buy | revisit | none
   relate <from> <kind> <to>    Link two items        kind: related_to|references|derived_from|depends_on
+  unrelate <from> <kind> <to>  Remove a reversible connection
   archive <id> / unarchive <id>
   delete <id> --yes            Permanently delete
 
 AI clients and devices
   mcp                          Run the MCP server on stdio
   connect                      Print setup for Claude Code, Codex and other MCP clients
-  serve                        Run the local HTTP API + MCP-over-HTTP  [--port 49231] [--lan]
-  clients add <name>           Create an API token   --scope read|capture|write (repeat or comma-separate)
-  clients pair <device>        Create a read+write token for a phone and print its pairing link  [--port]
+  serve                        Run the browser app, local HTTP API + MCP-over-HTTP  [--port 49231] [--lan]
+                               [--origin URL] [--max-upload-mb 200] [--max-json-kb 2048] [--max-sync-mb 32] [--max-writes 8]
+  clients add <name>           Create an API token   --scope read|capture|write|secrets|sync (repeat or comma-separate)
+  clients pair <device>        Create a read+write phone token and pairing link  [--port] [--scope secrets]
   clients list                 List API clients
   clients revoke <id>          Revoke a token immediately
 
@@ -75,6 +94,9 @@ AI (optional; bring your own provider)
   enrich <id>                  Summarize one item and suggest tags and a project now
   accept <id>                  Apply an item's suggested tags and project
   ask <question…>              Answer from your library with numbered citations  [-p project]
+  ai edit <root-id> <request…> Preview a proposed subtree edit as JSON; no changes applied
+  ai apply <proposal.json>    Apply a reviewed proposal (- reads stdin); stale proposals are rejected
+  ai undo <receipt.json>      Undo an applied proposal using its saved undo receipt (- reads stdin)
 
 Bring things in
   import bookmarks <file.html> Browser bookmark export; folders become tags  [-p project] [--archive fetches every page]
@@ -97,6 +119,10 @@ Your data
   sync [folder]                Sync through a shared folder (iCloud Drive, Dropbox, Syncthing…); a folder argument sets it
                                --passphrase - reads a passphrase from stdin and encrypts everything in the folder
   sync off                     Stop syncing
+  sync remote <server-url>    Exchange changes and files; token from PETTY_MEMORY_SYNC_TOKEN
+  shares                       List public links
+  shares create <root-id>      Create a live read-only link  [--exclude id]… [--expires ISO-time]
+  shares revoke <share-id>     Revoke a public link
   restore <file|latest> --yes  Replace the library with a snapshot; the current state is snapshotted first.
                                Quit the desktop app, \`serve\` and AI clients first.
 
@@ -140,6 +166,11 @@ const { values: opts, positionals } = parseCommandLine({
     scope: { type: 'string', multiple: true },
     port: { type: 'string' },
     lan: { type: 'boolean' },
+    origin: { type: 'string' },
+    'max-upload-mb': { type: 'string' },
+    'max-json-kb': { type: 'string' },
+    'max-sync-mb': { type: 'string' },
+    'max-writes': { type: 'string' },
     'no-fetch': { type: 'boolean' },
     model: { type: 'string' },
     'base-url': { type: 'string' },
@@ -151,11 +182,19 @@ const { values: opts, positionals } = parseCommandLine({
     keyword: { type: 'string', multiple: true },
     from: { type: 'string' },
     limit: { type: 'string' },
+    offset: { type: 'string' },
+    parent: { type: 'string' },
+    root: { type: 'boolean' },
+    before: { type: 'string' },
     all: { type: 'boolean' },
     pinned: { type: 'boolean' },
     intent: { type: 'string' },
     unopened: { type: 'string' },
     reminders: { type: 'boolean' },
+    review: { type: 'boolean' },
+    attention: { type: 'string' },
+    exclude: { type: 'string', multiple: true },
+    expires: { type: 'string' },
     yes: { type: 'boolean' },
   },
 });
@@ -188,11 +227,17 @@ const limit = () => (opts.limit === undefined ? undefined : Number(opts.limit));
 const filter = () => ({
   project: opts.project, type: opts.type, tag: opts.tag?.[0], includeArchived: opts.all,
   pinned: opts.pinned, intent: opts.intent, reminders: opts.reminders,
+  review: opts.review, attention: opts.attention,
   unopenedDays: opts.unopened === undefined ? undefined : Number(opts.unopened),
 });
 
 function emit(data: unknown, human: string): void {
   console.log(opts.json ? JSON.stringify(data, null, 2) : human);
+}
+
+function recoveryMessage(result: { restored: number; missingFiles?: { filename: string }[] }): string {
+  const missing = result.missingFiles;
+  return `Restored ${result.restored} items as a new change.${missing?.length ? ` File contents unavailable: ${missing.map((file) => file.filename).join(', ')}. Keep a backup with the original files.` : ''}`;
 }
 
 async function run(memory: EnveMemory): Promise<void> {
@@ -275,10 +320,108 @@ async function run(memory: EnveMemory): Promise<void> {
       const item = memory.items.get(arg(0, 'id'));
       return emit(item, opts.content ? item.content || '(no archived text)' : format.itemDetail(item));
     }
+    case 'outline': {
+      const [action] = rest;
+      if (opts.root && opts.parent !== undefined) throw new UsageError('Choose --parent or --root, not both.');
+      if (action === 'add') {
+        const entry = memory.outline.createNote({
+          parentId: opts.parent ?? null, title: text(1, 'title'), body: opts.body, project: opts.project, tags: opts.tag,
+        });
+        return emit(entry, format.itemLine(entry.item));
+      }
+      if (action === 'move') {
+        if (opts.parent === undefined && !opts.root) throw new UsageError('Choose a destination with --parent <id> or --root.');
+        const entry = memory.outline.move(arg(1, 'id'), { parentId: opts.parent ?? null, beforeId: opts.before });
+        return emit(entry, `Moved ${format.label(entry.item)} to ${entry.parentId ?? 'the root'}.`);
+      }
+      if (action === 'show') {
+        const id = arg(1, 'id');
+        const entry = memory.outline.get(id);
+        const ancestors = memory.outline.ancestors(id);
+        const result = { ...entry, ancestors };
+        return emit(result, `${[...ancestors, entry.item].map(format.label).join(' / ')}\n${format.itemLine(entry.item)}\n${entry.childCount} children`);
+      }
+      if (rest.length > 1) throw new UsageError('Use outline [parent-id], outline show, outline add or outline move.');
+      if (action && opts.parent !== undefined) throw new UsageError('Pass the parent id once, as an argument or --parent.');
+      if (action && opts.root) throw new UsageError('Choose a parent id or --root, not both.');
+      const offset = opts.offset === undefined ? 0 : Number(opts.offset);
+      const page = memory.outline.children(action ?? opts.parent ?? null, { offset, limit: limit(), includeArchived: opts.all });
+      const displayed = page.items.length;
+      const lines = page.items.map((entry) => `${format.itemLine(entry.item)}${entry.childCount ? `\n    ${entry.childCount} children` : ''}`);
+      const range = displayed ? `${offset + 1}–${offset + displayed}` : '0';
+      return emit(page, `${lines.join('\n')}${lines.length ? '\n\n' : ''}${range} of ${page.total} items${offset + displayed < page.total ? `; continue with --offset ${offset + displayed}` : ''}`);
+    }
+    case 'editor': {
+      const action = arg(0, 'action');
+      if (action === 'undo' || action === 'redo') {
+        const result = memory.editor[action](arg(1, 'action-id'));
+        return emit(result, `${result.label}. Action: ${result.actionId}`);
+      }
+      let commands: EditorCommand[];
+      let id: string | undefined;
+      if (action === 'apply') {
+        const file = arg(1, 'file.json');
+        const value = JSON.parse(readFileSync(file === '-' ? 0 : resolve(file), 'utf8'));
+        commands = Array.isArray(value) ? value : value?.commands;
+        id = Array.isArray(value) ? undefined : value?.id;
+      } else if (action === 'split') {
+        const item = memory.items.get(arg(1, 'id'));
+        const field = arg(2, 'title|body');
+        if (field !== 'title' && field !== 'body') throw new UsageError('Choose title or body for the split field.');
+        commands = [{ op: 'split', id: item.id, field, offset: Number(arg(3, 'offset')), baseText: item[field] }];
+      } else if (action === 'merge') {
+        commands = [{ op: 'merge', id: arg(1, 'id'), previousId: arg(2, 'previous-id') }];
+      } else {
+        throw new UsageError('Usage: editor apply|split|merge|undo|redo');
+      }
+      const result = memory.editor.apply(commands, { id });
+      return emit(result, `${result.label}. Action: ${result.actionId}`);
+    }
     case 'edit': {
       const item = memory.items.update(arg(0, 'id'), {
         title: opts.title, body: opts.body, url: opts.url, project: opts['no-project'] ? null : opts.project,
       });
+      return emit(item, format.itemDetail(item));
+    }
+    case 'presentation': {
+      const id = arg(0, 'id');
+      const value = opts.set === undefined ? memory.presentation.get(id)
+        : memory.presentation.update(id, JSON.parse(readFileSync(opts.set === '-' ? 0 : resolve(opts.set), 'utf8')) as Partial<ItemPresentation>);
+      return emit(value, JSON.stringify(value, null, 2));
+    }
+    case 'check':
+    case 'uncheck': {
+      const item = memory.presentation.toggle(arg(0, 'id'), command === 'check');
+      return emit(item, `${command === 'check' ? 'Completed' : 'Reopened'} ${format.label(item)}`);
+    }
+    case 'checklist': {
+      const id = arg(0, 'id');
+      if (rest[1] === 'reset') {
+        const result = memory.presentation.reset(id);
+        return emit(result, `Reset ${result.updated} entries.`);
+      }
+      if (rest[1]) throw new UsageError('Usage: checklist <id> [reset]');
+      const result = memory.presentation.progress(id);
+      return emit(result, `${result.done} of ${result.total} complete.`);
+    }
+    case 'history': {
+      if (rest[0] === 'show') {
+        const version = memory.versions.get(arg(1, 'version-id'));
+        return emit(version, JSON.stringify(version, null, 2));
+      }
+      if (rest[0] === 'restore') {
+        const result = memory.versions.restore(arg(1, 'version-id'));
+        return emit(result, recoveryMessage(result));
+      }
+      const page = memory.versions.list(arg(0, 'item-id'), { limit: limit(), offset: opts.offset === undefined ? undefined : Number(opts.offset) });
+      return emit(page, page.items.map((v) => `${v.id}  ${v.at}  ${v.op}  ${v.actor}`).join('\n') || 'No versions.');
+    }
+    case 'references': {
+      const result = memory.references.list(arg(0, 'id'));
+      return emit(result, JSON.stringify(result, null, 2));
+    }
+    case 'reference': {
+      const item = memory.references.insert(arg(0, 'from'), arg(1, 'to'), opts.title);
       return emit(item, format.itemDetail(item));
     }
     case 'pin':
@@ -306,6 +449,10 @@ async function run(memory: EnveMemory): Promise<void> {
     }
     case 'relate': {
       const item = memory.items.relate(arg(0, 'from'), arg(2, 'to'), arg(1, 'kind'));
+      return emit(item, format.itemDetail(item));
+    }
+    case 'unrelate': {
+      const item = memory.items.unrelate(arg(0, 'from'), arg(2, 'to'), arg(1, 'kind'));
       return emit(item, format.itemDetail(item));
     }
     case 'archive':
@@ -374,6 +521,13 @@ async function run(memory: EnveMemory): Promise<void> {
     }
     case 'sync': {
       const [target] = rest;
+      if (target === 'remote') {
+        const token = process.env.PETTY_MEMORY_SYNC_TOKEN;
+        if (!token) throw new UsageError('Set PETTY_MEMORY_SYNC_TOKEN to a token created on the sync server with --scope sync.');
+        const result = await new RemoteSyncClient(memory, { url: arg(1, 'server-url'), token }).run();
+        if (result.rejected) process.exitCode = 1;
+        return emit(result, `Sent ${result.pushed}, received ${result.pulled}, conflicts ${result.conflicts}, rejected ${result.rejected}.`);
+      }
       if (target === 'off') {
         memory.settings.set('syncFolder', '');
         memory.sync.forgetKey();
@@ -387,6 +541,19 @@ async function run(memory: EnveMemory): Promise<void> {
       const result = memory.sync.run();
       return emit({ folder: memory.settings.get('syncFolder'), ...result },
         `Synced with ${result.devices} other device${result.devices === 1 ? '' : 's'} through ${memory.settings.get('syncFolder')}: sent ${result.exported}, received ${result.imported}${result.conflicts ? `, kept ${result.conflicts} conflicting edit${result.conflicts === 1 ? '' : 's'} as notes` : ''}.`);
+    }
+    case 'shares': {
+      if (rest[0] === 'create') {
+        const result = memory.shares.create(arg(1, 'root-id'), { excludedIds: opts.exclude, expiresAt: opts.expires });
+        return emit(result, `${JSON.stringify(result.share, null, 2)}\n\nPublic token (shown once): ${result.token}\nOpen /s/${result.token} on your web host.\nAnyone with this link can read the shared tree until it expires or is revoked.`);
+      }
+      if (rest[0] === 'revoke') {
+        const share = memory.shares.revoke(arg(1, 'share-id'));
+        return emit(share, `Revoked ${share.id}`);
+      }
+      if (rest.length && rest[0] !== 'list') throw new UsageError('Usage: shares [list|create <root-id>|revoke <share-id>]');
+      const shares = memory.shares.list();
+      return emit(shares, shares.map((s) => `${s.id}  ${s.rootId}  ${s.revokedAt ? 'revoked' : s.expiresAt ?? 'no expiry'}`).join('\n') || 'No public links.');
     }
     case 'backup': {
       const backup = memory.backups.create('manual');
@@ -435,6 +602,22 @@ async function runAi(memory: EnveMemory): Promise<void> {
   switch (sub) {
     case undefined:
       break;
+    case 'edit': {
+      const proposal = await proposeEdit(memory, requireProvider(memory), { rootId: arg(1, 'root-id'), instruction: text(2, 'request') });
+      return emit(proposal, JSON.stringify(proposal, null, 2));
+    }
+    case 'apply': {
+      const file = arg(1, 'proposal.json');
+      const proposal = JSON.parse(readFileSync(file === '-' ? 0 : resolve(file), 'utf8')) as EditProposal;
+      const result = memory.edits.apply(proposal);
+      return emit(result, `Applied ${result.applied} changes.`);
+    }
+    case 'undo': {
+      const file = arg(1, 'receipt.json');
+      const value = JSON.parse(readFileSync(file === '-' ? 0 : resolve(file), 'utf8'));
+      const result = memory.edits.undo(value?.undo ?? value);
+      return emit(result, recoveryMessage(result));
+    }
     case 'use': {
       if (!value || !isProviderId(value) || value === 'none') throw new UsageError(`Choose a provider: ${PROVIDER_IDS.filter((p) => p !== 'none').join(', ')}.`);
       const provider = createProvider({ provider: value, model: opts.model ?? PROVIDERS[value].defaultModel ?? '', baseUrl: opts['base-url'], apiKey: envKeys(value) });
@@ -462,7 +645,7 @@ async function runAi(memory: EnveMemory): Promise<void> {
       if (value === 'on') memory.settings.set('aiEnrichSince', new Date().toISOString());
       break;
     default:
-      throw new UsageError('Usage: ai [use|models|off|enrich|auto-apply]');
+      throw new UsageError('Usage: ai [use|models|off|enrich|auto-apply|edit|apply]');
   }
   const settings = memory.settings.all();
   const status = {
@@ -521,7 +704,8 @@ function runClients(memory: EnveMemory): void {
       return emit({ client, token }, `Created ${client.name} (${client.scopes.join(', ')})\n\n  ${token}\n\nThis token is shown once. Store it in the client now.`);
     }
     case 'pair': {
-      const { client, token } = memory.clients.create(text(1, 'device'), ['read', 'write']);
+      const extraScopes = (opts.scope ?? []).flatMap((s) => s.split(',')).map((s) => s.trim()).filter(Boolean);
+      const { client, token } = memory.clients.create(text(1, 'device'), [...new Set(['read', 'write', ...extraScopes])]);
       const port = opts.port === undefined ? DEFAULT_PORT : Number(opts.port);
       const links = lanUrls(port).map((url) => pairingLink(url, token, client.name));
       return emit(
@@ -543,9 +727,29 @@ function runClients(memory: EnveMemory): void {
 }
 
 async function serve(): Promise<void> {
-  const memory = EnveMemory.open({ home: opts.home, actor: 'api' });
   const port = opts.port === undefined ? DEFAULT_PORT : Number(opts.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new UsageError(`Invalid port "${opts.port}".`);
+  const serverLimit = (name: 'max-upload-mb' | 'max-json-kb' | 'max-sync-mb' | 'max-writes', unit = 1) => {
+    if (opts[name] === undefined) return undefined;
+    const value = Number(opts[name]) * unit;
+    if (!Number.isSafeInteger(value) || value < 1) throw new UsageError(`--${name} must be positive.`);
+    return value;
+  };
+  const maxUploadBytes = serverLimit('max-upload-mb', 1024 * 1024);
+  const maxJsonBytes = serverLimit('max-json-kb', 1024);
+  const maxSyncBytes = serverLimit('max-sync-mb', 1024 * 1024);
+  const maxConcurrentWrites = serverLimit('max-writes');
+  const webOrigins: string[] = [];
+  if (opts.origin !== undefined) {
+    let origin: URL;
+    try { origin = new URL(opts.origin); }
+    catch { throw new UsageError('--origin must be a complete HTTP or HTTPS origin.'); }
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
+      throw new UsageError('--origin must contain only the HTTP or HTTPS scheme, host and port.');
+    }
+    webOrigins.push(origin.origin);
+  }
+  const memory = EnveMemory.open({ home: opts.home, actor: 'api' });
   const embedder = attachLocalEmbedder(memory);
   const indexer = embedder ? indexWorker(memory, embedder) : null;
   const enricher = enrichWorker(memory, () => {
@@ -556,17 +760,26 @@ async function serve(): Promise<void> {
       return null;
     }
   });
+  const organizer = organizeWorker(memory, () => {
+    try { return providerFor(memory); } catch { return null; }
+  }, () => indexer?.kick());
+  const webRoot = ['./web/', '../../../apps/web/public/']
+    .map((path) => fileURLToPath(new URL(path, import.meta.url)))
+    .find((path) => existsSync(join(path, 'index.html')));
   const api = createApiServer(memory, {
-    version: pkg.version, port, lan: opts.lan,
+    version: pkg.version, port, lan: opts.lan, webRoot, webOrigins, maxUploadBytes, maxJsonBytes, maxSyncBytes, maxConcurrentWrites,
     afterWrite: () => {
       indexer?.kick();
       enricher.kick();
+      organizer.kick();
     },
   });
   const url = await api.listen();
+  webOrigins.push(url, ...(opts.lan ? lanUrls(Number(new URL(url).port)) : []));
   api.ingest.kick();
   indexer?.kick();
   enricher.kick();
+  organizer.kick();
   const backup = () => {
     try {
       memory.backups.runSchedule();
@@ -593,6 +806,7 @@ async function serve(): Promise<void> {
     await api.close();
     await indexer?.idle();
     await enricher.idle();
+    await organizer.idle();
     memory.close();
     process.exit(0);
   };
@@ -651,6 +865,12 @@ function runProject(memory: EnveMemory): void {
       });
       return emit(project, format.projectLine(project));
     }
+    case 'history': {
+      const page = memory.projects.memoryHistory(text(1, 'project'), {
+        limit: limit(), offset: opts.offset === undefined ? undefined : Number(opts.offset),
+      });
+      return emit(page, page.items.map((v) => `${v.id}  ${v.at}  ${v.actor}\n${v.memory}`).join('\n\n') || 'No memory history.');
+    }
     case 'memory': {
       const ref = text(1, 'project');
       if (opts.set === undefined) {
@@ -662,7 +882,7 @@ function runProject(memory: EnveMemory): void {
       return emit({ project: project.name, saved: true }, `Updated memory for ${project.name}`);
     }
     default:
-      throw new UsageError('Usage: project new|list|show|edit|memory');
+      throw new UsageError('Usage: project new|list|show|edit|memory|history');
   }
 }
 

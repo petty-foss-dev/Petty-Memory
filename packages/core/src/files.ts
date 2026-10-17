@@ -38,13 +38,15 @@ export class FileService {
 
   /** Saving bytes already in the library returns the existing item, with any new note and tags merged in. */
   save(input: SaveFileInput): { item: ItemDetail; created: boolean } {
-    const filename = basename(required(input.filename, 'Filename'));
+    const filename = basename(required(input.filename, 'Filename').replaceAll('\\', '/'));
+    if (!filename || filename === '.' || filename === '..' || filename.includes('\0')) throw invalid('Choose a real filename.');
     if (input.data.byteLength === 0) throw invalid(`"${filename}" is empty.`);
     const sha256 = createHash('sha256').update(input.data).digest('hex');
     const mimeType = input.mimeType?.split(';')[0]?.trim().toLowerCase() || mimeFor(filename);
 
     const existing = this.ctx.get<{ item_id: string }>(
-      `SELECT a.item_id FROM attachments a JOIN items i ON i.id = a.item_id WHERE a.sha256 = ? AND i.archived_at IS NULL ORDER BY i.seq LIMIT 1`,
+      `SELECT a.item_id FROM attachments a JOIN items i ON i.id = a.item_id WHERE a.sha256 = ? AND i.archived_at IS NULL
+       AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0 ORDER BY i.seq LIMIT 1`,
       sha256,
     );
     if (existing) {

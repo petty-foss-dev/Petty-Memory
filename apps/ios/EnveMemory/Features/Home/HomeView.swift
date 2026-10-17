@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var loaded = false
     @State private var hasMore = false
     @State private var loadingMore = false
+    @State private var cachedAt: Date?
 
     private let pageSize = 30
 
@@ -19,7 +20,10 @@ struct HomeView: View {
         HearthScreen(title: "Home", overline: statusLine) {
             QuickCaptureBar()
             if outbox.pendingCount > 0 { OutboxBanner() }
+            if let cachedAt { CachedBanner(savedAt: cachedAt) }
             if let loadError { ErrorBanner(message: loadError) { Task { await load() } } }
+            LibraryShortcuts()
+            SuggestionsSection()
             ShelvesSection()
             recent
         }
@@ -61,13 +65,15 @@ struct HomeView: View {
     }
 
     private func load() async {
-        guard let client = connection.client else { return }
+        guard connection.client != nil else { return }
         do {
-            let page = try await client.items(ItemFilter(limit: pageSize))
+            let loaded = try await connection.load(.items(ItemFilter(limit: pageSize)), as: [Item].self)
+            let page = loaded.value
             items = page
-            hasMore = page.count == pageSize
+            cachedAt = loaded.cachedAt
+            hasMore = page.count == pageSize && loaded.cachedAt == nil
             loadError = nil
-            if !connection.isOnline { await connection.refresh() }
+            if loaded.cachedAt == nil, !connection.isOnline { await connection.refresh() }
         } catch is CancellationError {
             return
         } catch {
@@ -89,6 +95,24 @@ struct HomeView: View {
         } catch {
             router.show(error.localizedDescription)
             connection.note(error)
+        }
+    }
+}
+
+/// The outline, plus the vault and public links when this phone may use them.
+private struct LibraryShortcuts: View {
+    @Environment(Router.self) private var router
+    @Environment(Connection.self) private var connection
+
+    var body: some View {
+        FlowLayout(spacing: HearthSpacing.sm) {
+            FilterChip(title: "Outline", systemImage: "list.bullet.indent", isSelected: false) { router.open(.outline(nil)) }
+                .accessibilityIdentifier("OpenOutline")
+            if connection.canUseVault {
+                FilterChip(title: "Vault", systemImage: "lock", isSelected: false) { router.open(.vault) }
+                    .accessibilityIdentifier("OpenVault")
+            }
+            FilterChip(title: "Public links", systemImage: "link", isSelected: false) { router.open(.shares) }
         }
     }
 }
@@ -164,7 +188,7 @@ private struct OutboxBanner: View {
             HStack(spacing: HearthSpacing.md) {
                 TypeGlyph(symbol: "tray.and.arrow.up")
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(outbox.pendingCount == 1 ? "1 capture waiting to sync" : "\(outbox.pendingCount) captures waiting to sync")
+                    Text(outbox.pendingCount == 1 ? "1 change waiting to sync" : "\(outbox.pendingCount) changes waiting to sync")
                         .font(HearthFont.subheadline)
                     Text("They'll send when your server is reachable.")
                         .font(HearthFont.caption)

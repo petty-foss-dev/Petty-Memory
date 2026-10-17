@@ -128,6 +128,11 @@ public struct ItemMetadata: Codable, Hashable, Sendable {
     /// True while `Item.intent` is the server's guess rather than the user's choice.
     public var intentAuto: Bool?
     public var ai: AISuggestions?
+    /// Sparse; read it through `resolvedPresentation`.
+    public var presentation: ItemPresentation.Patch?
+    public var secret: Bool?
+    /// A secret note's ciphertext. Only `VaultCrypto` opens it, on this device.
+    public var vault: SecretEnvelope?
 
     public init() {}
 }
@@ -188,6 +193,40 @@ public struct Item: Decodable, Hashable, Identifiable, Sendable {
 
     public var isPinned: Bool { pinnedAt != nil }
 
+    init(id: String, type: ItemType, title: String, body: String, url: String? = nil, project: ProjectRef? = nil, source: String,
+         metadata: ItemMetadata, createdAt: Date, updatedAtStamp: String, archivedAt: Date? = nil, task: TaskFields? = nil,
+         tags: [String] = [], intent: Intent? = nil, pinnedAt: Date? = nil, openedAt: Date? = nil, remindAt: Date? = nil) {
+        self.id = id
+        self.type = type
+        self.title = title
+        self.body = body
+        self.url = url
+        self.project = project
+        self.source = source
+        self.metadata = metadata
+        self.createdAt = createdAt
+        self.updatedAt = JSONCoding.parseTimestamp(updatedAtStamp) ?? createdAt
+        self.updatedAtStamp = updatedAtStamp
+        self.archivedAt = archivedAt
+        self.task = task
+        self.tags = tags
+        self.intent = intent
+        self.pinnedAt = pinnedAt
+        self.openedAt = openedAt
+        self.remindAt = remindAt
+    }
+
+    /// The copy this phone may keep: no ciphertext and no AI output.
+    var cacheable: Item {
+        guard metadata.ai != nil || metadata.vault != nil else { return self }
+        var metadata = metadata
+        metadata.ai = nil
+        metadata.vault = nil
+        return Item(id: id, type: type, title: title, body: body, url: url, project: project, source: source, metadata: metadata,
+                    createdAt: createdAt, updatedAtStamp: updatedAtStamp, archivedAt: archivedAt, task: task, tags: tags, intent: intent,
+                    pinnedAt: pinnedAt, openedAt: openedAt, remindAt: remindAt)
+    }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -208,6 +247,30 @@ public struct Item: Decodable, Hashable, Identifiable, Sendable {
         pinnedAt = try c.decodeIfPresent(Date.self, forKey: .pinnedAt)
         openedAt = try c.decodeIfPresent(Date.self, forKey: .openedAt)
         remindAt = try c.decodeIfPresent(Date.self, forKey: .remindAt)
+    }
+}
+
+extension Item: Encodable {
+    /// The server's shape, with `updatedAt` written back exactly as it was received.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(type, forKey: .type)
+        try c.encode(title, forKey: .title)
+        try c.encode(body, forKey: .body)
+        try c.encodeIfPresent(url, forKey: .url)
+        try c.encodeIfPresent(project, forKey: .project)
+        try c.encode(source, forKey: .source)
+        try c.encode(metadata, forKey: .metadata)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(updatedAtStamp, forKey: .updatedAt)
+        try c.encodeIfPresent(archivedAt, forKey: .archivedAt)
+        try c.encodeIfPresent(task, forKey: .task)
+        try c.encode(tags, forKey: .tags)
+        try c.encodeIfPresent(intent, forKey: .intent)
+        try c.encodeIfPresent(pinnedAt, forKey: .pinnedAt)
+        try c.encodeIfPresent(openedAt, forKey: .openedAt)
+        try c.encodeIfPresent(remindAt, forKey: .remindAt)
     }
 }
 
@@ -242,6 +305,14 @@ public struct ItemDetail: Decodable, Hashable, Identifiable, Sendable {
         case content, attachments, tags, relations
     }
 
+    public init(item: Item, content: String = "", attachments: [Attachment] = [], tags: [String]? = nil, relations: [RelatedItem] = []) {
+        self.item = item
+        self.content = content
+        self.attachments = attachments
+        self.tags = tags ?? item.tags
+        self.relations = relations
+    }
+
     public init(from decoder: Decoder) throws {
         item = try Item(from: decoder)
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -249,6 +320,17 @@ public struct ItemDetail: Decodable, Hashable, Identifiable, Sendable {
         attachments = try container.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         relations = try container.decodeIfPresent([RelatedItem].self, forKey: .relations) ?? []
+    }
+}
+
+extension ItemDetail: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        try item.encode(to: encoder)
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(content, forKey: .content)
+        try c.encode(attachments, forKey: .attachments)
+        try c.encode(tags, forKey: .tags)
+        try c.encode(relations, forKey: .relations)
     }
 }
 

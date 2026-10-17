@@ -1,8 +1,9 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { reconcileBlobs } from './blobs.ts';
-import type { Context } from './context.ts';
+import { historyKeeps, reconcileBlobs } from './blobs.ts';
+import { type Context, newId } from './context.ts';
+import { transaction } from './db.ts';
 import { MemoryError, invalid } from './errors.ts';
 import { MIGRATIONS } from './migrations.ts';
 import type { MemoryPaths } from './paths.ts';
@@ -80,7 +81,7 @@ export class BackupService {
       if (!latest || now.getTime() - Date.parse(latest.createdAt) >= everyMs) created.push(this.create(kind, now));
     }
     this.prune();
-    if (this.paths) reconcileBlobs(this.paths.attachments, this.referencedBlobs(), now.getTime());
+    if (this.paths) reconcileBlobs(this.paths.attachments, this.referencedBlobs(), now.getTime(), historyKeeps(this.ctx.db));
     return created;
   }
 
@@ -147,10 +148,16 @@ export function restoreBackup(paths: MemoryPaths, snapshot: string, now = new Da
   }
   for (const suffix of ['-wal', '-shm']) rmSync(paths.database + suffix, { force: true });
   copyFileSync(snapshot, paths.database);
-  const restored = new DatabaseSync(paths.database, { readOnly: true });
+  const restored = new DatabaseSync(paths.database);
   try {
+    // A new writer identity makes peers detect a rewind even after new edits reuse old change numbers.
+    transaction(restored, () => {
+      restored.prepare(`INSERT INTO settings (key, value) VALUES ('device_id', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`).run(newId());
+      restored.prepare(`DELETE FROM settings WHERE key LIKE 'sync.peer.%' OR key = 'sync.exported_seq'`).run();
+      if (restored.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'sync_cursors'`).get()) restored.exec(`DELETE FROM sync_cursors`);
+    });
     const referenced = new Set((restored.prepare('SELECT DISTINCT sha256 FROM attachments').all() as { sha256: string }[]).map((r) => r.sha256));
-    reconcileBlobs(paths.attachments, referenced, now.getTime());
+    reconcileBlobs(paths.attachments, referenced, now.getTime(), historyKeeps(restored));
   } finally {
     restored.close();
   }

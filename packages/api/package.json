@@ -6,6 +6,7 @@
   "license": "AGPL-3.0-only",
   "exports": "./src/index.ts",
   "dependencies": {
+    "@enve-memory/ai": "0.1.0",
     "@enve-memory/core": "0.1.0",
     "@enve-memory/mcp": "0.1.0",
     "@modelcontextprotocol/node": "^2.1.0",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { call, errorMessage, onCommand, onOpenItem, useLive } from './lib/api.ts';
 import { SHELVES } from '../shared/ipc.ts';
 import { detectCapture } from './lib/capture.ts';
+import { isEditable, useUndoRedo } from './lib/edits.ts';
 import { AppContext, type AppState, type LibraryType, type Route } from './context.ts';
 import { Icon, type IconName, useFeedback } from './ui.tsx';
 import { Activity } from './views/Activity.tsx';
@@ -9,11 +10,13 @@ import { RemindersView } from './views/Reminders.tsx';
 import { SHELF_COPY, ShelfView } from './views/Shelf.tsx';
 import { GraphView } from './views/Graph.tsx';
 import { Ask } from './views/Ask.tsx';
+import { Highlights } from './views/Highlights.tsx';
 import { Home } from './views/Home.tsx';
 import { Inbox } from './views/Inbox.tsx';
 import { ItemDrawer } from './views/ItemDetail.tsx';
 import { Library } from './views/Library.tsx';
 import { NewProject } from './views/NewProject.tsx';
+import { OutlineView } from './views/Outline.tsx';
 import { ProjectView } from './views/Project.tsx';
 import { SearchPalette } from './views/Search.tsx';
 import { Settings } from './views/Settings.tsx';
@@ -44,6 +47,7 @@ export function App() {
   const [capture, setCapture] = useState<CaptureRequest>({ n: 0, mode: 'note' });
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+  const structure = useUndoRedo();
 
   const info = useLive(() => call('app.info'), []);
   const shelves = useLive(() => call('shelves.counts'), []);
@@ -77,8 +81,14 @@ export function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (mod(event) && !event.altKey && (key === 'z' || (key === 'y' && !isMac)) && !isEditable(event.target) && !document.querySelector('[aria-modal="true"]')) {
+        event.preventDefault();
+        if (key === 'y' || event.shiftKey) structure.redo();
+        else structure.undo();
+        return;
+      }
       if (mod(event) && !event.shiftKey && !event.altKey) {
-        const key = event.key.toLowerCase();
         const command = key === 'k' ? 'search' : key === 'n' ? 'new-note' : key === 'l' ? 'save-link' : key === ',' ? 'settings' : null;
         if (command) {
           event.preventDefault();
@@ -93,7 +103,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [runCommand, searching, openId]);
+  }, [runCommand, searching, openId, structure.undo, structure.redo]);
 
   const currentProject = route.view === 'project' ? route.id : undefined;
 
@@ -182,9 +192,11 @@ export function App() {
             {(projects.data ?? []).map((project) => nav({ view: 'project', id: project.id }, 'project', project.name, project.openTasks))}
             {projects.data?.length === 0 && <p className="nav-hint">Projects hold a memory document, decisions and tasks.</p>}
             <div className="nav-heading"><span>Library</span></div>
+            {nav({ view: 'outline' }, 'outline', 'Outline')}
             {LIBRARY_TABS.map((tab) => nav({ view: 'library', type: tab.type }, tab.type ?? 'library', tab.label))}
             {nav({ view: 'graph' }, 'graph', 'Graph')}
             <div className="nav-heading"><span>Shelves</span></div>
+            {nav({ view: 'highlights' }, 'star', 'Highlights')}
             {SHELVES.map((shelf) => nav({ view: 'shelf', shelf }, shelf === 'pinned' ? 'pin' : shelf, SHELF_COPY[shelf].title, shelves.data?.[shelf]))}
             {nav({ view: 'reminders' }, 'bell', 'Reminders', shelves.data?.reminders)}
           </nav>
@@ -198,6 +210,8 @@ export function App() {
           {route.view === 'home' && <Home capture={capture} />}
           {route.view === 'inbox' && <Inbox />}
           {route.view === 'library' && <Library type={route.type} />}
+          {route.view === 'outline' && <OutlineView key={route.reveal ?? ''} reveal={route.reveal} />}
+          {route.view === 'highlights' && <Highlights />}
           {route.view === 'project' && <ProjectView key={route.id} id={route.id} supersede={route.supersede} />}
           {route.view === 'tasks' && <Tasks />}
           {route.view === 'ask' && <Ask />}

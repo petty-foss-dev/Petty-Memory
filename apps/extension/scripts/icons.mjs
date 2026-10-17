@@ -1,11 +1,11 @@
-// Renders the toolbar icons (orange rounded square, white "M" stroke) to PNG with Node built-ins only.
+// Renders the toolbar icons (teal rounded square, white "M" stroke) to PNG with Node built-ins only.
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
 const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'icons');
-const ORANGE = [0xf5, 0x92, 0x1a];
+const TEAL = [0x0f, 0x7a, 0x8a];
 const WHITE = [0xff, 0xff, 0xff];
 const GLYPH = [[0.29, 0.7], [0.29, 0.31], [0.5, 0.55], [0.71, 0.31], [0.71, 0.7]];
 const SAMPLES = 8;
@@ -44,7 +44,7 @@ function render(size) {
       const total = SAMPLES * SAMPLES;
       const i = (y * size + x) * 4;
       const mix = bg ? fg / bg : 0;
-      for (let c = 0; c < 3; c++) pixels[i + c] = Math.round(ORANGE[c] * (1 - mix) + WHITE[c] * mix);
+      for (let c = 0; c < 3; c++) pixels[i + c] = Math.round(TEAL[c] * (1 - mix) + WHITE[c] * mix);
       pixels[i + 3] = Math.round((bg / total) * 255);
     }
   }

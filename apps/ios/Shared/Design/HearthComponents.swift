@@ -25,7 +25,7 @@ struct TagChip: View {
     var body: some View {
         Text("#\(tag)")
             .font(HearthFont.footnote.weight(.medium))
-            .foregroundStyle(hearth.accent)
+            .foregroundStyle(hearth.accentText)
             .padding(.horizontal, HearthSpacing.md)
             .padding(.vertical, HearthSpacing.xs + 2)
             .background(Capsule(style: .continuous).fill(hearth.accentMuted))
@@ -55,7 +55,7 @@ struct FilterChip: View {
             .padding(.horizontal, HearthSpacing.md)
             .padding(.vertical, HearthSpacing.sm)
             .background(Capsule(style: .continuous).fill(isSelected ? hearth.accent : hearth.surface))
-            .overlay(Capsule(style: .continuous).strokeBorder(isSelected ? .clear : hearth.hairline))
+            .overlay(Capsule(style: .continuous).strokeBorder(isSelected ? .clear : hearth.controlBorder))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -116,7 +116,7 @@ private struct HearthButtonBody: View {
 
     private var border: Color {
         switch variant {
-        case .secondary: hearth.hairline
+        case .secondary: hearth.controlBorder
         case .destructive: hearth.danger.opacity(0.35)
         case .primary, .quiet: .clear
         }
@@ -164,7 +164,7 @@ struct HearthFieldStyle: ViewModifier {
             .padding(.horizontal, HearthSpacing.md)
             .padding(.vertical, HearthSpacing.md - 1)
             .background(RoundedRectangle(cornerRadius: HearthRadius.inner, style: .continuous).fill(hearth.surfaceSunken))
-            .overlay(RoundedRectangle(cornerRadius: HearthRadius.inner, style: .continuous).strokeBorder(hearth.hairline))
+            .overlay(RoundedRectangle(cornerRadius: HearthRadius.inner, style: .continuous).strokeBorder(hearth.controlBorder))
     }
 }
 
@@ -172,7 +172,7 @@ extension View {
     func hearthField() -> some View { modifier(HearthFieldStyle()) }
 }
 
-/// The ambient two-circle ember glow behind every screen. Reduce Motion stills the drift.
+/// The ambient two-circle accent glow behind every screen. Reduce Motion stills the drift.
 struct DynamicBackground: View {
     @Environment(\.hearth) private var hearth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

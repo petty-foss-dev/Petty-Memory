@@ -149,11 +149,25 @@ function MemoryDocument({ project }: { project: Project }) {
   );
 }
 
+const HISTORY_PAGE = 20;
+
 function MemoryHistory({ project, onRestore }: { project: Project; onRestore: () => void }) {
   const { toast, confirm } = useFeedback();
-  const versions = useLive(() => call('projects.memoryHistory', project.id), [project.id]);
+  const [want, setWant] = useState(HISTORY_PAGE);
+  // Every loaded page is re-read on a change, so an edit from another device shows up at the top without losing older pages.
+  const versions = useLive(async () => {
+    const items: MemoryVersion[] = [];
+    let total = 0;
+    do {
+      const page = await call('projects.memoryHistory', project.id, { offset: items.length, limit: Math.min(HISTORY_PAGE, want - items.length) });
+      total = page.total;
+      items.push(...page.items);
+      if (!page.items.length) break;
+    } while (items.length < Math.min(want, total));
+    return { items, total };
+  }, [project.id, want]);
   const [open, setOpen] = useState<MemoryVersion | null>(null);
-  const list = versions.data ?? [];
+  const list = versions.data?.items ?? [];
   const restore = async (version: MemoryVersion) => {
     const ok = await confirm({
       title: 'Restore this version?',
@@ -166,20 +180,26 @@ function MemoryHistory({ project, onRestore }: { project: Project; onRestore: ()
       onRestore();
     }, (error: unknown) => toast(errorMessage(error), 'error'));
   };
+  if (versions.error) return <p className="error-text">{versions.error.message}</p>;
   return (
     <div className="memory-history">
-      {list.length === 0 && <p className="muted small">No saved versions yet.</p>}
+      {versions.data && list.length === 0 && <p className="muted small">No saved versions yet.</p>}
       <ul className="history">
         {list.map((version, index) => (
           <li key={version.id}>
-            <button className={`link-button ${open?.id === version.id ? 'active' : ''}`} onClick={() => setOpen(open?.id === version.id ? null : version)}>
+            <button className={`link-button ${open?.id === version.id ? 'active' : ''}`} aria-pressed={open?.id === version.id} onClick={() => setOpen(open?.id === version.id ? null : version)}>
               {formatDateTime(version.at)}
             </button>
             <span className={`actor ${actorInfo(version.actor).kind}`}>{actorInfo(version.actor).label}</span>
-            {index === 0 && <span className="badge">Current</span>}
+            {index === 0 && version.memory === project.memory && <span className="badge">Current</span>}
           </li>
         ))}
       </ul>
+      {versions.data && list.length < versions.data.total && (
+        <button className="button small" onClick={() => setWant(list.length + HISTORY_PAGE)}>
+          Show older ({(versions.data.total - list.length).toLocaleString()} more)
+        </button>
+      )}
       {open && (
         <div className="version-preview">
           {open.memory ? <MarkdownView source={open.memory} /> : <p className="muted">(empty)</p>}

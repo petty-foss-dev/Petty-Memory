@@ -6,8 +6,10 @@ public enum JSONCoding {
         return try? Date(value, strategy: .iso8601)
     }
 
+    // Truncate milliseconds without shifting parsed timestamps or delaying a just-queued write.
     public static func formatTimestamp(_ date: Date) -> String {
-        date.formatted(fractional)
+        let millisecond = (date.timeIntervalSince1970 * 1000 + 0.001).rounded(.down)
+        return Date(timeIntervalSince1970: (millisecond + 0.1) / 1000).formatted(fractional)
     }
 
     public static func makeDecoder() -> JSONDecoder {

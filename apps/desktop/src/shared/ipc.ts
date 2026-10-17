@@ -1,8 +1,11 @@
 import type { Answer } from '@enve-memory/ai';
 import type {
-  ApiClient, Backup, Change, ClientScope, CreateProjectInput, CreateRuleInput, CreateTaskInput, Decision, ExportSummary, Graph, Item,
-  Intent, ItemDetail, ItemFilter, ItemType, Project, ProjectBriefing, RecordDecisionInput, Rule, SaveLinkInput, SaveNoteInput, SearchHit,
-  Settings, SyncResult, Task, UpdateItemInput, UpdateProjectInput, UpdateTaskInput,
+  ApiClient, Backup, Change, ClientScope, CreateProjectInput, CreateRuleInput, CreateTaskInput, Decision, EditProposal, EditorActionResult,
+  EditorCommand, EnveMemory,
+  ExportSummary, Graph, Item, Intent, ItemDetail, ItemFilter, ItemPresentation, ItemType, ItemVersion, ItemVersionSummary, OutlineEntry,
+  OutlineListOptions, OutlineMoveInput, OutlineNoteInput, OutlinePage, Project, ProjectBriefing, PublicShare, RecordDecisionInput,
+  RelatedItem, Rule, SaveLinkInput, SaveNoteInput, SearchHit, Settings, SyncResult, Task, UpdateItemInput, UpdateProjectInput,
+  UpdateTaskInput, VaultState,
 } from '@enve-memory/core';
 import type { ImportResult } from '@enve-memory/importers';
 
@@ -36,12 +39,8 @@ export interface ProjectSummary extends Project {
   openTasks: number;
 }
 
-export interface MemoryVersion {
-  id: string;
-  at: string;
-  actor: string;
-  memory: string;
-}
+export type MemoryHistoryPage = ReturnType<EnveMemory['projects']['memoryHistory']>;
+export type MemoryVersion = MemoryHistoryPage['items'][number];
 
 export interface ApiStatus {
   running: boolean;
@@ -126,6 +125,57 @@ export interface SyncStatus {
   last: { at: string; result: SyncResult | null; error: string | null; code: string | null } | null;
 }
 
+export interface SecretNoteInput {
+  title: string;
+  body: string;
+  project?: string;
+  tags?: string[];
+  /** Another secret note, or an ordinary parent; null or absent for the top level. */
+  parentId?: string | null;
+}
+
+/** A secret note in the vault's outline. `title` is decrypted in main and exists only while the vault is unlocked. */
+export interface VaultNode {
+  id: string;
+  parentId: string | null;
+  title: string;
+  childCount: number;
+  updatedAt: string;
+}
+
+/** An encrypted attachment's real name and type, read from inside its ciphertext. */
+export interface VaultFile {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface VaultAttachResult {
+  attached: number;
+  /** Files that weren't encrypted, with why; the others were still saved. */
+  failed: { filename: string; message: string }[];
+}
+
+export type EditUndoReceipt = NonNullable<ReturnType<EnveMemory['edits']['apply']>['undo']>;
+
+export interface CreatedShare {
+  share: PublicShare;
+  token: string;
+  /** Addresses where this app's local server shows it: a web page if the browser client is bundled, else the JSON. */
+  links: { url: string; label: string }[];
+  /** The links open a readable page rather than JSON. */
+  page: boolean;
+}
+
+export interface RemoteStatus {
+  url: string | null;
+  hasToken: boolean;
+  running: boolean;
+  last: { at: string; pushed: number; pulled: number; conflicts: number; rejected: number; error: string | null } | null;
+}
+
 export const IMPORT_KINDS = ['bookmarks', 'markdown', 'csv', 'enve'] as const;
 export type ImportKind = (typeof IMPORT_KINDS)[number];
 
@@ -189,12 +239,72 @@ export interface Api {
   'reminders.list': () => Reminders;
   'files.save': (paths: string[], project?: string) => ItemDetail[];
 
+  'outline.children': (parentId: string | null, options?: OutlineListOptions) => OutlinePage;
+  'outline.get': (id: string) => OutlineEntry;
+  'outline.ancestors': (id: string) => Item[];
+  'outline.move': (id: string, input: OutlineMoveInput) => OutlineEntry;
+  'outline.createNote': (input: OutlineNoteInput) => OutlineEntry;
+
+  /** Journalled structural and text edits; undo and redo take the action id these return. */
+  'editor.apply': (commands: EditorCommand[], options?: { id?: string }) => EditorActionResult;
+  'editor.undo': (actionId: string) => EditorActionResult;
+  'editor.redo': (actionId: string) => EditorActionResult;
+
+  'presentation.get': (id: string) => ItemPresentation;
+  'presentation.update': (id: string, patch: Partial<ItemPresentation>) => ItemPresentation;
+  'presentation.toggle': (id: string, checked: boolean) => ItemDetail;
+  'presentation.reset': (id: string) => { updated: number };
+  'presentation.progress': (id: string) => { done: number; total: number };
+
+  'versions.list': (itemId: string, options?: { offset?: number; limit?: number }) => { items: ItemVersionSummary[]; total: number };
+  'versions.get': (versionId: string) => ItemVersion;
+  'versions.restore': (versionId: string) => ReturnType<EnveMemory['versions']['restore']>;
+
+  'references.insert': (fromId: string, toId: string, label?: string) => ItemDetail;
+  'references.list': (id: string) => { outgoing: RelatedItem[]; incoming: RelatedItem[] };
+  'items.relate': (fromId: string, toId: string, kind: string) => ItemDetail;
+  'items.unrelate': (fromId: string, toId: string, kind: string) => ItemDetail;
+
+  'edits.propose': (rootId: string, instruction: string) => EditProposal;
+  'edits.apply': (proposal: EditProposal) => ReturnType<EnveMemory['edits']['apply']>;
+  'edits.undo': (receipt: EditUndoReceipt) => ReturnType<EnveMemory['edits']['undo']>;
+
+  'vault.state': () => VaultState;
+  'vault.setup': (passphrase: string) => VaultState;
+  'vault.unlock': (passphrase: string) => VaultState;
+  'vault.lock': () => VaultState;
+  'vault.create': (input: SecretNoteInput) => ItemDetail;
+  'vault.read': (id: string) => { id: string; title: string; body: string };
+  'vault.update': (id: string, input: { title: string; body: string }) => ItemDetail;
+  'vault.outline': () => VaultNode[];
+  'vault.files': (itemId: string) => VaultFile[];
+  /** Main shows the file picker; null when cancelled. */
+  'vault.attachFiles': (itemId: string) => VaultAttachResult | null;
+  /** Main decrypts and shows the save dialog; the file is written, never opened. Null when cancelled. */
+  'vault.saveFile': (itemId: string, attachmentId: string) => { filename: string } | null;
+  'vault.removeFile': (itemId: string, attachmentId: string) => { removed: boolean };
+  /** Main saves the kit through a save dialog and returns the code to show once; null when cancelled. */
+  'vault.recoveryKit': () => { code: string } | null;
+  /** Main asks for the kit file, then recovers with `code`; null when no file was chosen. */
+  'vault.recover': (code: string) => VaultState | null;
+  'vault.restoreVersion': (versionId: string) => ReturnType<EnveMemory['vault']['restoreVersion']>;
+
+  'shares.list': () => PublicShare[];
+  'shares.create': (rootId: string, options?: { excludedIds?: string[]; expiresAt?: string | null }) => CreatedShare;
+  'shares.revoke': (shareId: string) => PublicShare;
+
+  'remoteSync.get': () => RemoteStatus;
+  /** Leaving `token` out keeps the saved one (changing only the address). */
+  'remoteSync.configure': (config: { url: string; token?: string }) => RemoteStatus;
+  'remoteSync.run': () => RemoteStatus;
+  'remoteSync.disconnect': () => RemoteStatus;
+
   'projects.list': (status?: string) => ProjectSummary[];
   'projects.create': (input: CreateProjectInput) => Project;
   'projects.update': (ref: string, input: UpdateProjectInput) => Project;
   'projects.setMemory': (ref: string, memory: string) => Project;
   'projects.briefing': (ref: string) => ProjectBriefing;
-  'projects.memoryHistory': (ref: string) => MemoryVersion[];
+  'projects.memoryHistory': (ref: string, options?: { offset?: number; limit?: number }) => MemoryHistoryPage;
   'decisions.record': (input: RecordDecisionInput) => Decision;
 
   'tasks.list': (query?: TaskQuery, limit?: number) => Task[];
@@ -220,7 +330,7 @@ export interface Api {
 
   'clients.list': () => ApiClient[];
   'clients.create': (name: string, scopes: ClientScope[]) => { client: ApiClient; token: string };
-  'clients.pair': (name: string) => PairResult;
+  'clients.pair': (name: string, options?: { secrets?: boolean }) => PairResult;
   'clients.revoke': (id: string) => ApiClient;
   'api.status': () => ApiStatus;
   'api.setLan': (lan: boolean) => ApiStatus;
@@ -285,6 +395,51 @@ export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
   'shelves.list': 'read',
   'reminders.list': 'read',
   'files.save': 'write',
+  'outline.children': 'read',
+  'outline.get': 'read',
+  'outline.ancestors': 'read',
+  'outline.move': 'write',
+  'outline.createNote': 'write',
+  'editor.apply': 'write',
+  'editor.undo': 'write',
+  'editor.redo': 'write',
+  'presentation.get': 'read',
+  'presentation.update': 'write',
+  'presentation.toggle': 'write',
+  'presentation.reset': 'write',
+  'presentation.progress': 'read',
+  'versions.list': 'read',
+  'versions.get': 'read',
+  'versions.restore': 'write',
+  'references.insert': 'write',
+  'references.list': 'read',
+  'items.relate': 'write',
+  'items.unrelate': 'write',
+  'edits.propose': 'read',
+  'edits.apply': 'write',
+  'edits.undo': 'write',
+  'vault.state': 'read',
+  'vault.setup': 'write',
+  'vault.unlock': 'write',
+  'vault.lock': 'write',
+  'vault.create': 'write',
+  'vault.read': 'read',
+  'vault.update': 'write',
+  'vault.outline': 'read',
+  'vault.files': 'read',
+  'vault.attachFiles': 'write',
+  'vault.saveFile': 'read',
+  'vault.removeFile': 'write',
+  'vault.recoveryKit': 'read',
+  'vault.recover': 'write',
+  'vault.restoreVersion': 'write',
+  'shares.list': 'read',
+  'shares.create': 'write',
+  'shares.revoke': 'write',
+  'remoteSync.get': 'read',
+  'remoteSync.configure': 'write',
+  'remoteSync.run': 'write',
+  'remoteSync.disconnect': 'write',
   'projects.list': 'read',
   'projects.create': 'write',
   'projects.update': 'write',

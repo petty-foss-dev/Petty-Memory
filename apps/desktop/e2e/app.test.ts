@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { type Server, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { after, before, describe, test } from 'node:test';
+import { after, afterEach, before, describe, test } from 'node:test';
 import { type ElectronApplication, type Page, _electron as electron } from 'playwright';
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,6 +31,7 @@ const ARTICLE = `<!doctype html><html><head><title>Rolling codes, explained</tit
 </article></body></html>`;
 
 let app: ElectronApplication;
+let appClosed = false;
 let page: Page;
 let server: Server;
 let articleUrl = '';
@@ -87,7 +88,53 @@ async function settings(section: string): Promise<void> {
 const call = (method: string, ...args: unknown[]) =>
   page.evaluate(async ([m, a]) => window.enve.call(m as string, ...(a as unknown[])), [method, args] as const);
 
+type OutlineItem = { id: string; title: string; body: string };
+
+async function outlineChildren(parentId: string | null): Promise<OutlineItem[]> {
+  const result = await call('outline.children', parentId, { limit: 200 }) as { ok: true; value: { items: { item: OutlineItem }[] } };
+  return result.value.items.map((entry) => entry.item);
+}
+
+const childTitles = async (parentId: string | null) => (await outlineChildren(parentId)).map((item) => item.title);
+
+async function childId(parentId: string | null, title: string): Promise<string> {
+  const found = (await outlineChildren(parentId)).find((item) => item.title === title);
+  assert.ok(found, `"${title}" is in the outline`);
+  return found.id;
+}
+
+/** Waits for a write to land, then checks the stored order. */
+async function expectChildren(parentId: string | null, expected: string[]): Promise<void> {
+  let titles: string[] = [];
+  for (let i = 0; i < 50; i++) {
+    titles = await childTitles(parentId);
+    if (titles.join('\n') === expected.join('\n')) return;
+    await page.waitForTimeout(100);
+  }
+  assert.deepEqual(titles, expected);
+}
+
+const outlineRow = (title: string) => page.getByRole('button', { name: title, exact: true });
+
+const waitForFocus = (label: string) =>
+  page.waitForFunction((name) => document.activeElement?.getAttribute('aria-label') === name, label);
+
+const mainWindow = (size: [number, number]) =>
+  app.evaluate(({ BrowserWindow }, [width, height]) => {
+    BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().endsWith('#capture'))!.setSize(width, height);
+  }, size);
+
 describe('Petty Memory desktop', { timeout: 180_000 }, () => {
+  afterEach(async (context) => {
+    if (context.passed || !page || page.isClosed()) return;
+    if ('error' in context) console.error(context.error);
+    await page.screenshot({ path: join(shots, 'failure.png') });
+    writeFileSync(join(shots, 'failure.html'), await page.content());
+    await app.evaluate(() => (globalThis as { restoreEnveCall?: () => void }).restoreEnveCall?.());
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+  });
+
   before(async () => {
     mkdirSync(shots, { recursive: true });
     runCli('settings', 'semanticSearch', 'false');
@@ -116,12 +163,15 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
         ENVE_MEMORY_NO_GLOBAL_SHORTCUT: '1',
       },
     });
+    app.on('close', () => { appClosed = true; });
     page = await app.firstWindow();
+    page.on('pageerror', (error) => console.error('[renderer-error]', error.message));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1280, 820));
   });
 
   after(async () => {
     server?.close();
+    if (app && !appClosed) await app.close();
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -178,7 +228,8 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
   test('edits the project memory and records a decision', async () => {
     await nav('Garage Door');
     await page.getByRole('button', { name: 'Write the first version' }).click();
-    await page.getByRole('textbox', { name: 'Memory document' }).fill('## Goal\n\nA replacement controller that speaks **Security+ 2.0**.\n\n## Open questions\n\n- Which relay board?');
+    await page.locator('.memory').getByRole('button', { name: 'Edit as Markdown' }).click();
+    await page.getByRole('textbox', { name: 'Memory document (Markdown)' }).fill('## Goal\n\nA replacement controller that speaks **Security+ 2.0**.\n\n## Open questions\n\n- Which relay board?');
     await page.getByRole('button', { name: 'Save memory' }).click();
     await page.locator('.memory .markdown').getByRole('heading', { name: 'Goal' }).waitFor();
     await page.getByText('Earlier versions are kept.', { exact: false }).waitFor();
@@ -224,7 +275,7 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
     await input.press('Enter');
     const drawer = page.getByRole('dialog', { name: 'Note details' });
     await drawer.waitFor();
-    assert.match(await drawer.getByRole('textbox', { name: 'Note', exact: true }).inputValue(), /Bench-test rig/);
+    assert.match(await drawer.getByRole('textbox', { name: 'Note', exact: true }).textContent() ?? '', /Bench-test rig/);
     await page.keyboard.press('Escape');
     await drawer.waitFor({ state: 'detached' });
   });
@@ -604,6 +655,508 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
     await settings('Appearance');
     await page.getByRole('radio', { name: 'Dark' }).click();
     await page.waitForFunction(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+
+  test('outline: builds a root note, children and a grandchild inline', async () => {
+    await nav('Outline');
+    await page.getByRole('heading', { name: 'Outline', exact: true }).waitFor();
+    await page.getByRole('list', { name: 'Outline', exact: true }).locator(':scope > li.outline-node').first().waitFor();
+
+    await page.getByRole('button', { name: 'New note', exact: true }).click();
+    const title = page.getByLabel('Note title');
+    const beforeEmpty = await childTitles(null);
+    await title.press('Enter');
+    await page.waitForTimeout(300);
+    assert.deepEqual(await childTitles(null), beforeEmpty, 'an empty composer saves nothing');
+    await title.fill('Garage outline');
+    await title.press('Enter');
+    await outlineRow('Garage outline').waitFor();
+    assert.equal(await title.inputValue(), '', 'the composer clears for the next note');
+    await title.press('Escape');
+    await title.waitFor({ state: 'detached' });
+    await waitForFocus('Garage outline');
+    assert.equal((await childTitles(null))[0], 'Garage outline', 'a new top-level note goes first');
+
+    await page.getByRole('button', { name: 'Actions for Garage outline', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Add note inside' }).click();
+    await title.fill('Wiring');
+    await title.press('Enter');
+    await page.getByRole('list', { name: 'Inside Garage outline' }).getByRole('button', { name: 'Wiring', exact: true }).waitFor();
+    await title.fill('Firmware');
+    await title.press('Enter');
+    await page.getByRole('list', { name: 'Inside Garage outline' }).getByRole('button', { name: 'Firmware', exact: true }).waitFor();
+    await title.press('Escape');
+    const garage = await childId(null, 'Garage outline');
+    await expectChildren(garage, ['Wiring', 'Firmware']);
+
+    await page.getByRole('button', { name: 'Actions for Wiring', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Add note inside' }).click();
+    await title.fill('Pinout');
+    await title.press('Shift+Enter');
+    const details = page.getByLabel('Note details');
+    await details.fill('Red is 12 V, white is data.');
+    await details.press(`${mod}+Enter`);
+    await page.getByRole('list', { name: 'Inside Wiring' }).getByRole('button', { name: 'Pinout', exact: true }).waitFor();
+    await title.press('Escape');
+    const [pinout] = await outlineChildren(await childId(garage, 'Wiring'));
+    assert.equal(pinout?.title, 'Pinout');
+    assert.equal(pinout?.body, 'Red is 12 V, white is data.');
+    await shot('outline-dark');
+  });
+
+  test('outline: collapses a branch and reopens it as it was', async () => {
+    await page.getByRole('button', { name: 'Collapse Garage outline' }).click();
+    await page.getByRole('list', { name: 'Inside Garage outline' }).waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Expand Garage outline' }).click();
+    await page.getByRole('list', { name: 'Inside Wiring' }).getByRole('button', { name: 'Pinout', exact: true }).waitFor();
+
+    await nav('Home');
+    await nav('Outline');
+    await page.getByRole('list', { name: 'Inside Wiring' }).getByRole('button', { name: 'Pinout', exact: true }).waitFor();
+  });
+
+  test('outline: reorders, indents and outdents from the keyboard, the menu and the row buttons', async () => {
+    const garage = await childId(null, 'Garage outline');
+    const wiring = await childId(garage, 'Wiring');
+    await outlineRow('Firmware').focus();
+    await page.keyboard.press('Alt+ArrowUp');
+    await expectChildren(garage, ['Firmware', 'Wiring']);
+    await waitForFocus('Firmware');
+    await page.keyboard.press('Alt+ArrowDown');
+    await expectChildren(garage, ['Wiring', 'Firmware']);
+    await waitForFocus('Firmware');
+
+    await page.keyboard.press('Alt+ArrowRight');
+    await expectChildren(wiring, ['Pinout', 'Firmware']);
+    await page.getByRole('list', { name: 'Inside Wiring' }).getByRole('button', { name: 'Firmware', exact: true }).waitFor();
+    await waitForFocus('Firmware');
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expectChildren(garage, ['Wiring', 'Firmware']);
+    assert.deepEqual(await childTitles(wiring), ['Pinout'], 'outdenting keeps the old parent’s other children');
+    await waitForFocus('Firmware');
+
+    await page.getByRole('button', { name: 'Actions for Firmware', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Move up/ }).click();
+    await expectChildren(garage, ['Firmware', 'Wiring']);
+    const firmwareRow = page.locator('.outline-row').filter({ has: outlineRow('Firmware') });
+    await firmwareRow.hover();
+    await firmwareRow.getByRole('button', { name: 'Move down' }).click();
+    await expectChildren(garage, ['Wiring', 'Firmware']);
+    assert.deepEqual(await childTitles(wiring), ['Pinout'], 'reordering keeps the subtree');
+  });
+
+  test('outline: moves a branch to another parent with its subtree, and refuses impossible moves', async () => {
+    await page.getByRole('button', { name: 'New note', exact: true }).click();
+    await page.getByLabel('Note title').fill('Bench rig');
+    await page.getByLabel('Note title').press('Enter');
+    await outlineRow('Bench rig').waitFor();
+    await page.getByLabel('Note title').press('Escape');
+
+    await page.getByRole('button', { name: 'Actions for Wiring', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Move to…' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Move “Wiring”' });
+    await dialog.getByText('The note inside it moves too.', { exact: false }).waitFor();
+    await dialog.getByRole('button', { name: /^Garage outline/ }).click();
+    const inside = dialog.getByRole('list', { name: 'Inside Garage outline' });
+    await inside.getByRole('button', { name: /^Firmware/ }).waitFor();
+    assert.equal(await inside.getByRole('button', { name: /^Wiring/ }).count(), 0, 'an item is never offered as its own parent');
+    assert.equal(await dialog.getByRole('button', { name: 'Already here' }).isDisabled(), true);
+    await dialog.getByRole('navigation', { name: 'Location' }).getByRole('button', { name: 'Top level' }).click();
+    await dialog.getByRole('button', { name: /^Bench rig/ }).click();
+    await dialog.getByRole('navigation', { name: 'Location' }).getByRole('button', { name: 'Bench rig' }).waitFor();
+    await dialog.getByRole('button', { name: 'Move here' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    await page.getByText('Moved into Bench rig').waitFor();
+
+    const garage = await childId(null, 'Garage outline');
+    const bench = await childId(null, 'Bench rig');
+    await expectChildren(bench, ['Wiring']);
+    const wiring = await childId(bench, 'Wiring');
+    assert.deepEqual(await childTitles(wiring), ['Pinout'], 'the moved branch keeps its children');
+    assert.deepEqual(await childTitles(garage), ['Firmware']);
+    await page.getByRole('list', { name: 'Inside Bench rig' }).getByRole('button', { name: 'Wiring', exact: true }).waitFor();
+
+    await page.getByRole('list', { name: 'Inside Garage outline' }).getByRole('button', { name: 'Wiring', exact: true }).waitFor({ state: 'detached' });
+    await page.getByRole('list', { name: 'Inside Bench rig' }).getByRole('button', { name: 'Pinout', exact: true }).click();
+    const drawer = page.getByRole('dialog', { name: 'Note details' });
+    const crumbs = drawer.getByRole('navigation', { name: 'Inside' });
+    await crumbs.waitFor();
+    assert.deepEqual(await crumbs.getByRole('button').allTextContents(), ['Bench rig', 'Wiring']);
+    await page.keyboard.press('Escape');
+    await drawer.waitFor({ state: 'detached' });
+
+    const cycle = await call('outline.move', bench, { parentId: wiring }) as { ok: boolean; error?: { code: string } };
+    assert.equal(cycle.ok, false, 'a note can’t move inside its own branch');
+    const decisions = await call('items.list', { type: 'decision' }, 5) as { ok: true; value: { id: string; title: string }[] };
+    const decision = decisions.value[0]!;
+    const moved = await call('outline.move', decision.id, { parentId: bench }) as { ok: boolean };
+    assert.equal(moved.ok, false, 'decisions stay where they were recorded');
+    await page.getByRole('button', { name: `Actions for ${decision.title}`, exact: true }).click();
+    const menu = page.getByRole('menu', { name: `Actions for ${decision.title}` });
+    await menu.getByRole('menuitem', { name: /^Open details/ }).waitFor();
+    assert.equal(await menu.getByRole('menuitem', { name: /^(Move|Indent|Outdent|Add note inside)/ }).count(), 0, 'decision rows are read-only');
+    await page.keyboard.press('Escape');
+    await menu.waitFor({ state: 'detached' });
+  });
+
+  test('outline: splits a title at the caret, joins it back, and undoes and redoes the structure', async () => {
+    await page.getByRole('button', { name: 'New note', exact: true }).click();
+    const title = page.getByLabel('Note title');
+    await title.fill('Relay board notes');
+    await title.press('Enter');
+    await outlineRow('Relay board notes').waitFor();
+    await title.press('Escape');
+    await waitForFocus('Relay board notes');
+    const id = await childId(null, 'Relay board notes');
+    const after = async () => {
+      const titles = await childTitles(null);
+      return titles.slice(titles.indexOf('Relay'), titles.indexOf('Relay') + 2);
+    };
+
+    await page.keyboard.press('F2');
+    const rename = page.locator('input.outline-edit');
+    await rename.waitFor();
+    await rename.evaluate((input: HTMLInputElement) => input.setSelectionRange(6, 6));
+    await rename.press('Enter');
+    await page.waitForFunction(() => (document.querySelector('input.outline-edit') as HTMLInputElement | null)?.value === 'board notes');
+    for (let i = 0; i < 50 && (await after()).join('|') !== 'Relay|board notes'; i++) await page.waitForTimeout(100);
+    assert.deepEqual(await after(), ['Relay', 'board notes'], 'the text after the caret becomes the next note');
+    assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement).selectionStart), 0, 'the caret starts the new note');
+
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(() => (document.querySelector('input.outline-edit') as HTMLInputElement | null)?.value === 'Relay board notes');
+    assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement).selectionStart), 6, 'the caret sits at the join');
+    assert.equal((await outlineChildren(null)).filter((item) => item.id === id).length, 1, 'the merge keeps the original note');
+    await page.keyboard.press('Escape');
+    await waitForFocus('Relay board notes');
+
+    await page.getByRole('button', { name: /^Undo Merge notes/ }).waitFor();
+    await page.keyboard.press(`${mod}+Z`);
+    await outlineRow('board notes').waitFor();
+    assert.deepEqual(await after(), ['Relay', 'board notes'], 'undo brings the merged note back');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+Z' : 'Control+Y');
+    await outlineRow('Relay board notes').waitFor();
+    await outlineRow('board notes').waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: /^Undo Merge notes/ }).click();
+    await outlineRow('board notes').waitFor();
+    await page.getByRole('button', { name: /^Undo Split note/ }).click();
+    await outlineRow('Relay board notes').waitFor();
+    await outlineRow('board notes').waitFor({ state: 'detached' });
+
+    await outlineRow('Relay board notes').focus();
+    await page.keyboard.press('F2');
+    await rename.waitFor();
+    await rename.press('End');
+    await rename.press('Enter');
+    const composer = page.getByLabel('Note title');
+    await composer.waitFor();
+    assert.equal(await composer.inputValue(), '', 'Enter at the end opens a composer instead of storing an empty note');
+    await composer.press('Escape');
+  });
+
+  test('typing undo in a field stays local, and the rich body editor keeps Markdown it can’t show', async () => {
+    if (!(await childTitles(null)).includes('Relay board notes')) {
+      await call('items.saveNote', { title: 'Relay board notes', body: 'Kept through local typing undo' });
+    }
+    const body = '| Pin | Wire |\n|-----|------|\n| 1 | red |\n\n<kbd>Reset</kbd> twice.\n\n[datasheet]: https://example.com/ds.pdf\n';
+    const created = await call('items.saveNote', { title: 'Relay wiring', body }) as { ok: true; value: { id: string } };
+    await app.evaluate(({ BrowserWindow }, id) => {
+      BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().endsWith('#capture'))!.webContents.send('enve:open', id);
+    }, created.value.id);
+    const drawer = page.getByRole('dialog', { name: 'Note details' });
+    const editor = drawer.getByRole('textbox', { name: 'Note', exact: true });
+    await editor.waitFor();
+    await drawer.locator('pre.pm-raw-block[data-kind="table"]').waitFor();
+    await editor.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' Then wait.');
+    assert.match(await editor.locator('p').last().textContent() ?? '', /twice\. Then wait\.$/, 'typing stays at the chosen paragraph');
+    await page.keyboard.press(`${mod}+Z`);
+    const caret = await editor.evaluate(() => {
+      const node = window.getSelection()?.anchorNode;
+      const element = node?.nodeType === Node.ELEMENT_NODE ? node as Element : node?.parentElement;
+      return { node: node?.nodeName, paragraph: element?.closest('p')?.textContent, parent: element?.outerHTML };
+    });
+    assert.ok(caret.paragraph?.includes('twice.'), `undo restores the paragraph caret: ${JSON.stringify(caret)}`);
+    assert.ok((await childTitles(null)).includes('Relay board notes'), 'undo inside the editor never undoes outline changes');
+    await page.keyboard.type(' Then wait.');
+    await drawer.getByRole('button', { name: 'Bold' }).click();
+    await page.keyboard.type('Done');
+    await drawer.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.getByText('Saved', { exact: true }).waitFor();
+    const saved = await call('items.get', created.value.id) as { ok: true; value: { body: string } };
+    assert.ok(saved.value.body.startsWith('| Pin | Wire |\n|-----|------|\n| 1 | red |\n\n'), 'the table is kept byte for byte');
+    assert.ok(saved.value.body.includes('[datasheet]: https://example.com/ds.pdf'), 'link definitions survive');
+    assert.match(saved.value.body, /<kbd>Reset<\/kbd> twice\. Then wait\.\*\*Done\*\*/);
+    await drawer.getByRole('button', { name: 'Edit as Markdown' }).click();
+    const source = drawer.getByRole('textbox', { name: 'Note (Markdown)' });
+    assert.equal(await source.inputValue(), saved.value.body);
+    await source.press('ControlOrMeta+End');
+    await page.keyboard.type(' source edit');
+    await source.press(`${mod}+Z`);
+    assert.equal(await source.inputValue(), saved.value.body, 'native undo also works in a plain Markdown field');
+    await source.press(process.platform === 'darwin' ? 'Meta+Shift+Z' : 'Control+Y');
+    assert.ok((await source.inputValue()).endsWith(' source edit'), 'native redo stays in the focused field');
+    await source.press(`${mod}+Z`);
+    await page.keyboard.press('Escape');
+    await drawer.waitFor({ state: 'detached' });
+  });
+
+  test('outline: keeps unsaved text when saving fails', async () => {
+    const bench = await childId(null, 'Bench rig');
+    await app.evaluate(({ ipcMain }) => {
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...a: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('enve:call')!;
+      handlers.set('enve:call', async (event: unknown, method: unknown, args: unknown) => method === 'editor.apply'
+        ? { ok: false, error: { code: 'internal', message: 'The library is busy. Try again.' } }
+        : original(event, method, args));
+      (globalThis as { restoreEnveCall?: () => void }).restoreEnveCall = () => handlers.set('enve:call', original);
+    });
+    await page.getByRole('button', { name: 'Actions for Bench rig', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Add note inside' }).click();
+    const title = page.getByLabel('Note title');
+    await title.fill('Logic analyzer');
+    await title.press('Enter');
+    await page.getByText('The library is busy. Try again.').waitFor();
+    assert.equal(await title.inputValue(), 'Logic analyzer');
+    assert.deepEqual(await childTitles(bench), ['Wiring'], 'nothing half-made is left behind');
+
+    await app.evaluate(() => (globalThis as { restoreEnveCall?: () => void }).restoreEnveCall!());
+    await title.press('Enter');
+    await page.getByRole('list', { name: 'Inside Bench rig' }).getByRole('button', { name: 'Logic analyzer', exact: true }).waitFor();
+    await expectChildren(bench, ['Logic analyzer', 'Wiring']);
+    await title.press('Escape');
+    await waitForFocus('Logic analyzer');
+  });
+
+  test('outline: pages long lists of children and keeps them loaded through a refresh', async () => {
+    await nav('Outline');
+    const core = pathToFileURL(join(repo, 'packages', 'core', 'src', 'index.ts')).href;
+    execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { EnveMemory } from ${JSON.stringify(core)};
+      const memory = EnveMemory.open({ home: ${JSON.stringify(home)}, actor: 'cli' });
+      const bin = memory.outline.createNote({ parentId: null, title: 'Parts bin' });
+      for (let i = 1; i <= 250; i++) memory.outline.createNote({ parentId: bin.item.id, title: 'Part ' + String(i).padStart(3, '0') });
+      memory.close();
+    `]);
+    const outline = page.getByRole('list', { name: 'Outline', exact: true });
+    const rootMore = outline.locator(':scope > li.outline-status').getByRole('button', { name: 'Show more' });
+    await rootMore.or(outlineRow('Parts bin')).first().waitFor({ timeout: 6000 });
+    if (await rootMore.isVisible()) await rootMore.click();
+    await outlineRow('Parts bin').waitFor({ timeout: 6000 });
+    await page.getByRole('button', { name: 'Expand Parts bin' }).click();
+
+    const inside = page.getByRole('list', { name: 'Inside Parts bin' });
+    const rows = inside.locator(':scope > li.outline-node');
+    const more = inside.locator(':scope > li.outline-status').getByRole('button', { name: 'Show more' });
+    await inside.getByRole('button', { name: 'Part 100', exact: true }).waitFor();
+    assert.equal(await rows.count(), 100);
+    await inside.getByText('150 not shown yet').waitFor();
+    await more.click();
+    await inside.getByRole('button', { name: 'Part 200', exact: true }).waitFor();
+    await more.click();
+    await inside.getByRole('button', { name: 'Part 250', exact: true }).waitFor();
+    assert.equal(await rows.count(), 250);
+    assert.equal(await more.count(), 0);
+
+    runCli('note', 'a write elsewhere refreshes the outline');
+    await outlineRow('a write elsewhere refreshes the outline').waitFor({ timeout: 6000 });
+    assert.equal(await rows.count(), 250, 'a refresh reloads every loaded row, past one page');
+    await page.getByRole('button', { name: 'Collapse Parts bin' }).click();
+  });
+
+  test('outline: deep, long rows fit a narrow window in the light theme', async () => {
+    let parentId = await childId(await childId(await childId(null, 'Bench rig'), 'Wiring'), 'Pinout');
+    const long = 'a deliberately long title that has to wrap rather than push the row off the screen';
+    for (let depth = 1; depth <= 12; depth++) {
+      const created = await call('outline.createNote', { parentId, title: `Level ${depth}, ${long}` }) as { ok: true; value: { item: { id: string } } };
+      parentId = created.value.item.id;
+    }
+    await settings('Appearance');
+    await page.getByRole('radio', { name: 'Light' }).click();
+    await page.waitForFunction(() => !matchMedia('(prefers-color-scheme: dark)').matches);
+    await mainWindow([760, 720]);
+
+    await app.evaluate(({ BrowserWindow }, id) => {
+      BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().endsWith('#capture'))!.webContents.send('enve:open', id);
+    }, parentId);
+    const drawer = page.getByRole('dialog', { name: 'Note details' });
+    await drawer.getByRole('navigation', { name: 'Inside' }).waitFor();
+    assert.equal(await drawer.getByRole('navigation', { name: 'Inside' }).getByRole('button').count(), 14);
+    await drawer.getByRole('button', { name: 'Show in outline' }).click();
+    await drawer.waitFor({ state: 'detached' });
+
+    const deepest = `Level 12, ${long}`;
+    await waitForFocus(deepest);
+    const box = (await outlineRow(deepest).boundingBox())!;
+    const actions = (await page.getByRole('button', { name: `Actions for ${deepest}`, exact: true }).boundingBox())!;
+    const width = await page.evaluate(() => window.innerWidth);
+    assert.ok(box.width >= 120, `the deepest title keeps room to read (${box.width}px)`);
+    assert.ok(actions.x + actions.width <= width, 'row actions stay on screen');
+    assert.ok(await page.evaluate(() => {
+      const main = document.querySelector('.main')!;
+      return main.scrollWidth <= main.clientWidth + 1;
+    }), 'no sideways scrolling');
+
+    await page.keyboard.press('ArrowUp');
+    await waitForFocus(`Level 11, ${long}`);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.activeElement!).outlineStyle), 'solid', 'keyboard focus is visible');
+    await shot('outline-light-narrow');
+
+    await mainWindow([1280, 820]);
+    await settings('Appearance');
+    await page.getByRole('radio', { name: 'Dark' }).click();
+    await page.waitForFunction(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+
+  test('vault: nested secret notes, encrypted files with recoverable removal, and a recovery kit that unlocks', async () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'enve-vault-e2e-'));
+    const source = join(scratch, 'wiring-diagram.txt');
+    writeFileSync(source, 'synthetic wiring diagram, not a real secret');
+    const copy = join(scratch, 'saved-copy.txt');
+    const kitPath = join(scratch, 'kit.json');
+    const stub = (open: string, save: string) => app.evaluate(({ dialog }, [openPath, savePath]) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [openPath] })) as typeof dialog.showOpenDialog;
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: savePath })) as typeof dialog.showSaveDialog;
+    }, [open, save] as const);
+    const passphrase = 'synthetic test passphrase';
+
+    await settings('Secret notes');
+    await page.getByLabel('Vault passphrase').fill(passphrase);
+    await page.getByLabel('Repeat').fill(passphrase);
+    await page.getByRole('button', { name: 'Set up the vault' }).click();
+    await page.getByText('Unlocked', { exact: true }).waitFor();
+
+    await page.getByRole('button', { name: 'New secret note' }).click();
+    const create = page.getByRole('dialog', { name: 'New secret note' });
+    await create.getByLabel('Title').fill('Garage codes');
+    await create.getByLabel('Secret').fill('synthetic code 1234');
+    await create.getByRole('button', { name: 'Save secret' }).click();
+    await create.waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'New secret note inside Garage codes' }).click();
+    await create.getByLabel('Title').fill('Opener remote');
+    await create.getByRole('button', { name: 'Save secret' }).click();
+    await page.getByRole('list', { name: 'Inside Garage codes' }).getByRole('button', { name: 'Opener remote', exact: true }).waitFor();
+    const outline = await call('vault.outline') as { ok: true; value: { id: string; parentId: string | null; title: string }[] };
+    const parent = outline.value.find((node) => node.title === 'Garage codes')!;
+    assert.equal(outline.value.find((node) => node.title === 'Opener remote')?.parentId, parent.id, 'the child is nested in the secret parent');
+    const stored = await call('items.get', parent.id) as { ok: true; value: { title: string; body: string } };
+    assert.deepEqual([stored.value.title, stored.value.body], ['Secret note', ''], 'the library only sees the generic label');
+
+    await stub(source, copy);
+    await page.getByRole('button', { name: 'Garage codes', exact: true }).click();
+    const drawer = page.getByRole('dialog', { name: 'Note details' });
+    await drawer.getByRole('button', { name: 'Add files…' }).click();
+    await page.getByText('Encrypted 1 file').waitFor();
+    await drawer.getByText('wiring-diagram.txt').waitFor();
+    const files = await call('items.get', parent.id) as { ok: true; value: { attachments: { filename: string }[] } };
+    assert.deepEqual(files.value.attachments.map((a) => a.filename), ['Encrypted attachment.pmv'], 'the row never holds the real name');
+    await drawer.getByRole('button', { name: 'Save a copy…' }).click();
+    await page.getByText('Saved a decrypted copy').waitFor();
+    assert.equal(readFileSync(copy, 'utf8'), 'synthetic wiring diagram, not a real secret');
+
+    await drawer.getByRole('button', { name: 'Remove…' }).click();
+    await page.getByRole('alertdialog', { name: 'Remove “wiring-diagram.txt”?' }).getByRole('button', { name: 'Remove file' }).click();
+    await drawer.getByText('No files yet.', { exact: false }).waitFor();
+    await drawer.getByRole('button', { name: /Versions and restore/ }).click();
+    await drawer.locator('.version-list li').nth(1).getByRole('button', { name: 'Restore' }).click();
+    await page.getByRole('alertdialog', { name: 'Restore this version?' }).getByRole('button', { name: 'Restore' }).click();
+    await drawer.getByText('wiring-diagram.txt').waitFor();
+    await page.keyboard.press('Escape');
+    await drawer.waitFor({ state: 'detached' });
+
+    await stub(kitPath, kitPath);
+    await page.getByRole('button', { name: 'Create a recovery kit…' }).click();
+    const code = await page.getByTestId('recovery-code').textContent() ?? '';
+    assert.match(code, /^pmr1_[A-Za-z0-9_-]{43}$/);
+    const kit = readFileSync(kitPath, 'utf8');
+    assert.equal(JSON.parse(kit).kind, 'petty-memory-vault-recovery');
+    assert.ok(!kit.includes(passphrase) && !kit.includes(code), 'the kit holds neither the passphrase nor its code');
+    await page.getByRole('button', { name: 'Lock now' }).click();
+    await page.getByTestId('recovery-code').waitFor({ state: 'detached' });
+
+    await page.getByRole('button', { name: 'Forgot it? Use a recovery kit' }).click();
+    await page.getByLabel('Recovery code').fill(`pmr1_${'A'.repeat(43)}`);
+    await page.getByRole('button', { name: 'Choose the kit file and unlock…' }).click();
+    await page.getByText('doesn’t open this recovery kit', { exact: false }).waitFor();
+    assert.equal((await call('vault.state') as { ok: true; value: { unlocked: boolean } }).value.unlocked, false, 'a wrong code changes nothing');
+    await page.getByLabel('Recovery code').fill(code);
+    await page.getByRole('button', { name: 'Choose the kit file and unlock…' }).click();
+    await page.getByText('Unlocked', { exact: true }).waitFor();
+    assert.equal(await page.getByLabel('Recovery code').count(), 0);
+
+    const blockedCopy = join(scratch, 'cancelled-after-lock.txt');
+    await app.evaluate(({ dialog }, target) => {
+      dialog.showSaveDialog = (() => new Promise((resolve) => {
+        (globalThis as { finishVaultDialog?: () => void }).finishVaultDialog = () => resolve({ canceled: false, filePath: target });
+      })) as typeof dialog.showSaveDialog;
+    }, blockedCopy);
+    const attached = await call('items.get', parent.id) as { ok: true; value: { attachments: { id: string }[] } };
+    const pendingSave = call('vault.saveFile', parent.id, attached.value.attachments[0]!.id);
+    for (let tries = 0; tries < 30; tries++) {
+      if (await app.evaluate(() => Boolean((globalThis as { finishVaultDialog?: unknown }).finishVaultDialog))) break;
+      await page.waitForTimeout(20);
+    }
+    assert.equal(await app.evaluate(() => typeof (globalThis as { finishVaultDialog?: unknown }).finishVaultDialog), 'function');
+    await call('vault.lock');
+    await call('vault.unlock', passphrase);
+    await app.evaluate(() => {
+      const state = globalThis as { finishVaultDialog?: () => void };
+      state.finishVaultDialog!();
+      delete state.finishVaultDialog;
+    });
+    const cancelled = await pendingSave as { ok: boolean; error?: { code: string } };
+    assert.equal(cancelled.ok, false);
+    assert.equal(cancelled.error?.code, 'locked');
+    assert.equal(existsSync(blockedCopy), false, 'locking and unlocking while a dialog waits never writes a late decrypted file');
+    await shot('vault-encrypted-files');
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  test('browser client: unsaved edits are guarded by an in-page dialog, never window.confirm', async () => {
+    const status = await call('api.status') as { ok: true; value: { url: string } };
+    const created = await call('clients.create', 'E2E browser', ['read', 'write']) as { ok: true; value: { token: string } };
+    const opened = app.waitForEvent('window');
+    await app.evaluate(({ BrowserWindow }, url) => {
+      void new BrowserWindow({ width: 1100, height: 800 }).loadURL(url);
+    }, `${status.value.url}/`);
+    const web = await opened;
+    let nativeDialogs = 0;
+    web.on('dialog', (dialog) => {
+      nativeDialogs += 1;
+      void dialog.dismiss();
+    });
+    await web.getByPlaceholder('em_…').fill(created.value.token);
+    await web.getByRole('button', { name: 'Connect' }).click();
+    const tree = web.getByRole('tree', { name: 'Outline' });
+    await tree.getByRole('treeitem', { name: /Relay board notes/ }).click();
+    await web.getByRole('button', { name: 'Edit', exact: true }).click();
+    const text = web.getByRole('textbox', { name: 'Text', exact: true });
+    await text.click();
+    await web.keyboard.type('A draft worth keeping.');
+    await web.getByText('Unsaved changes').waitFor();
+
+    const close = web.getByRole('button', { name: 'Close details' });
+    await close.click();
+    const confirm = web.getByRole('alertdialog', { name: 'Discard unsaved changes?' });
+    await confirm.waitFor();
+    await web.screenshot({ path: join(shots, 'browser-confirmation.png') });
+    assert.equal(await web.evaluate(() => document.activeElement?.textContent), 'Keep editing', 'a destructive choice is never the default');
+    await web.keyboard.press('Escape');
+    await confirm.waitFor({ state: 'detached' });
+    assert.equal(await web.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Close details', 'focus returns to the opener');
+    assert.match(await text.textContent() ?? '', /A draft worth keeping\./, 'cancelling keeps the draft');
+
+    for (const colorScheme of ['dark', 'light'] as const) {
+      await web.emulateMedia({ colorScheme });
+      await web.screenshot({ path: join(shots, `browser-editor-${colorScheme}.png`) });
+    }
+
+    await close.click();
+    await confirm.getByRole('button', { name: 'Discard changes' }).click();
+    await text.waitFor({ state: 'detached' });
+    assert.equal(nativeDialogs, 0, 'no native confirm, alert or prompt');
+    await web.close();
   });
 
   test('quits cleanly and releases the API port', async () => {

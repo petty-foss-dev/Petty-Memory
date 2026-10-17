@@ -9,9 +9,11 @@ struct ProjectsView: View {
 
     @State private var error: String?
     @State private var loaded = false
+    @State private var cachedAt: Date?
 
     var body: some View {
         HearthScreen(title: "Projects") {
+            if let cachedAt { CachedBanner(savedAt: cachedAt) }
             if let error { ErrorBanner(message: error) { Task { await load() } } }
             if store.projects.isEmpty, loaded, error == nil {
                 EmptyStateView(symbol: "folder", title: "No projects yet",
@@ -28,7 +30,7 @@ struct ProjectsView: View {
 
     private func load() async {
         do {
-            try await store.load(connection.client)
+            cachedAt = try await store.load(connection)
             error = nil
         } catch is CancellationError {
             return

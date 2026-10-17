@@ -9,8 +9,11 @@ struct EnveMemoryApp: App {
     @State private var router: Router
     @State private var connection: Connection
     @State private var outbox: OutboxService
+    @State private var history: EditorHistory
+    @State private var offline: OfflineSync
     @State private var projects = ProjectStore()
     @State private var reminders = ReminderScheduler()
+    @State private var vault = VaultSession()
     @State private var notificationDelegate: NotificationDelegate
     @Environment(\.scenePhase) private var scenePhase
 
@@ -24,8 +27,11 @@ struct EnveMemoryApp: App {
         UNUserNotificationCenter.current().delegate = delegate
         _router = State(initialValue: router)
         _notificationDelegate = State(initialValue: delegate)
+        let outbox = OutboxService(connection: connection)
         _connection = State(initialValue: connection)
-        _outbox = State(initialValue: OutboxService(connection: connection))
+        _outbox = State(initialValue: outbox)
+        _history = State(initialValue: EditorHistory(outbox: outbox, router: router))
+        _offline = State(initialValue: OfflineSync(connection: connection))
     }
 
     var body: some Scene {
@@ -35,8 +41,11 @@ struct EnveMemoryApp: App {
                 .environment(router)
                 .environment(connection)
                 .environment(outbox)
+                .environment(history)
+                .environment(offline)
                 .environment(projects)
                 .environment(reminders)
+                .environment(vault)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -47,7 +56,10 @@ struct EnveMemoryApp: App {
                     await reminders.sync(connection.client)
                 }
             case .background:
+                vault.lock()
                 if outbox.pendingCount > 0 { Self.scheduleRefresh() }
+            case .inactive:
+                vault.lock()
             default:
                 break
             }

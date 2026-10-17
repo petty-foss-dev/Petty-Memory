@@ -53,7 +53,7 @@ export class SearchService {
     if (!embedder || !this.embeddings.hasIndex(embedder.model)) return keyword.slice(0, wanted);
 
     const { where, params } = this.items.filterClauses(filter);
-    const narrowed = filter.project !== undefined || filter.type !== undefined || filter.tag !== undefined;
+    const narrowed = where.length > (filter.includeArchived ? 0 : 1);
     const allowed = narrowed
       ? new Set(this.ctx.all<{ id: string }>(`SELECT i.id FROM items i WHERE ${where.join(' AND ')}`, ...params).map((r) => r.id))
       : undefined;

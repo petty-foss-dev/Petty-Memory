@@ -31,6 +31,12 @@ targets:
     platform: iOS
     sources:
       - path: EnveMemory
+        excludes:
+          - Resources/Editor/**
+      # The shared formatted editor, served to its web view from the bundle; build it with scripts/build-editor.sh.
+      - path: EnveMemory/Resources/Editor
+        type: folder
+        buildPhase: resources
       - path: Shared
     dependencies:
       - package: EnveMemoryKit
@@ -117,6 +123,22 @@ targets:
               NSExtensionActivationSupportsFileWithMaxCount: 10
               NSExtensionActivationSupportsMovieWithMaxCount: 1
 
+  # Native UI regression workflows against a scratch server; they skip unless TEST_RUNNER_MEMORY_PAIRING_LINK is set.
+  EnveMemoryUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: EnveMemoryUITests
+    dependencies:
+      - target: EnveMemory
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.enve.memory.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: EnveMemory
+        # Main-actor default isolation can't override XCTestCase's nonisolated initializers; test classes opt in instead.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+
 schemes:
   EnveMemory:
     build:
@@ -128,6 +150,7 @@ schemes:
       config: Debug
       targets:
         - package: EnveMemoryKit/EnveMemoryKitTests
+        - EnveMemoryUITests
     profile:
       config: Release
     archive:

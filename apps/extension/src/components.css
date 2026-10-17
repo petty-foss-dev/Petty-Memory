@@ -187,7 +187,7 @@ kbd {
 .choice {
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: transparent;
   color: var(--text-2);
