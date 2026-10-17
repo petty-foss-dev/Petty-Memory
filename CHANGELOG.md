@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Saved views: reusable keyword searches with combined project, type, tag, task-status, shelf and attention filters, dynamic results and cursor paging.
+- Note/checklist templates: atomic tree copies with fresh identities, remapped internal references, reset completion and optional date/project placeholders.
+- Workflow management in desktop, browser and iPhone, with CLI and scoped MCP access. Definitions travel with ordinary library history, exports and sync; iPhone writes require a connection.
+
 ## 0.1.0 (2026-09-25)
 
 The first release: the whole memory layer, apps on three platforms, and every AI tool reading and writing one library that lives on your computer.

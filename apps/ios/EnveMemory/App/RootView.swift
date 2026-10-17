@@ -119,6 +119,9 @@ struct MainView: View {
             case .vault: VaultView()
             case .vaultNote(let id): VaultNoteView(itemID: id)
             case .shares: SharesView()
+            case .savedViews: SavedViewsView()
+            case .savedView(let id): SavedViewResultsView(viewID: id)
+            case .templates: TemplatesView()
             }
         }
         .id(route)

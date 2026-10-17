@@ -24,7 +24,7 @@ struct ItemDetailView: View {
     @State private var sheet: ItemSheet?
 
     struct ItemSheet: Identifiable {
-        enum Kind: String { case edit, ai, share, move }
+        enum Kind: String { case edit, ai, share, move, saveTemplate, useTemplate }
         let kind: Kind
         let item: Item
         var id: String { kind.rawValue }
@@ -76,6 +76,8 @@ struct ItemDetailView: View {
         case .edit: ItemEditor(item: item)
         case .ai: AIEditSheet(item: item)
         case .share: ShareLinkSheet(item: item)
+        case .saveTemplate: SaveAsTemplateSheet(item: item)
+        case .useTemplate: TemplateUseSheet(template: item) { router.open(.item($0.id)) }
         case .move:
             MoveDestinationPicker(item: item) { parent, before in
                 Task { await history.perform([.move(id: item.id, parentId: parent, beforeId: before)], label: "Move “\(item.displayTitle)”", sent: "Moved") }
@@ -163,6 +165,7 @@ private struct ItemDetailContent: View {
         if item.isSecret {
             SecretNoteCard(itemID: item.id)
         } else {
+            WorkflowCard(item: item)
             if let task = item.task { taskCard(task) }
             if item.task == nil, item.type != .decision { OrganizeCard(item: item) }
             if let ai = item.metadata.ai, ai.isReady, ai.summary?.isEmpty == false || ai.isPending {
@@ -318,7 +321,7 @@ private struct ItemDetailContent: View {
     }
 }
 
-/// Outline, history, AI and sharing for one item. Each entry appears only where the server would accept it.
+/// Outline, history, AI, sharing and templates for one item. Each entry appears only where the server would accept it.
 private struct ItemMenu: View {
     let item: Item
     /// Created on this phone and not sent yet: only what can queue is offered.
@@ -345,6 +348,11 @@ private struct ItemMenu: View {
             if isOrdinary, item.archivedAt == nil, !isQueued {
                 Button("Edit with AI…", systemImage: "sparkles") { present(.ai) }
                 Button("Public link…", systemImage: "link") { present(.share) }
+            }
+            if item.isTemplateRoot, item.archivedAt == nil {
+                Button("Use template…", systemImage: "doc.on.doc") { present(.useTemplate) }
+            } else if item.type == .note, isOrdinary, item.archivedAt == nil, !isQueued, !item.isSavedView, !item.isTemplateMember {
+                Button("Save as template…", systemImage: "doc.on.doc") { present(.saveTemplate) }
             }
         } label: {
             Image(systemName: "ellipsis.circle")

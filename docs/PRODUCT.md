@@ -26,7 +26,7 @@ Underneath all three, an **activity log** records every change and which client 
 
 ## Principles
 
-1. **Local-first.** One SQLite file in the user's data folder. No account, no server, no Docker. It works fully offline.
+1. **Local-first.** One SQLite file in the user's data folder. The desktop library, capture and search work offline without an account. A self-hosted server is optional for browser, phone and remote-device access.
 2. **AI is optional.** With no AI provider configured you still get capture, projects, tasks, full-text search, MCP and the CLI. Semantic search runs on a bundled local model. AI enrichment (summaries, tag suggestions) is an extra, never a dependency. If the AI is down, saving still works.
 3. **Bring your own model.** Ollama, OpenAI, Anthropic, Gemini, OpenRouter, or any OpenAI-compatible server behind one provider interface.
 4. **No lock-in.** "Export everything" produces plain Markdown and JSON that stay useful even if Petty Memory disappears.
@@ -44,6 +44,10 @@ People who work with several AI tools and are tired of re-explaining their proje
 4. *"Add a task to build the bench simulator."* Claude calls `create_task`.
 5. Open Codex. It sees the same task and the same history.
 
+## Repeatable workflows
+
+Saved views turn a useful query and filters into a named, dynamic list. Note/checklist templates preserve a reusable tree and create fresh copies without repeating completed work. Both use ordinary journalled note metadata, so backup, history, export and sync keep the definitions. See [WORKFLOWS.md](WORKFLOWS.md) for behavior and limits.
+
 ## Out of scope
 
-Accounts, cloud hosting, teams, social features and public profiles, analytics and a custom model. Each could take months without improving the core loop. See the [roadmap](ROADMAP.md) for what's next.
+Required accounts, team collaboration, social profiles, analytics and a custom model. Optional self-hosting and selective public subtree links already exist; managed hosting remains future work. See the [roadmap](ROADMAP.md) for what's next.

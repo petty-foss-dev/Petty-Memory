@@ -42,6 +42,34 @@ test('capture, organize and find from the command line', () => {
   assert.match(cli(home, ['project', 'show', 'garage']).stdout, /## Instructions\nOffline only\.[\s\S]*## Memory\n# Goal/);
 });
 
+test('saved views and templates persist and run through the real CLI', () => {
+  const home = tempHome();
+  const project = json(home, ['project', 'new', 'Workshop']);
+  const root = json(home, ['outline', 'add', 'Review {{date}}', '--body', 'Project: {{project}}']);
+  const child = json(home, ['outline', 'add', 'Check tools', '--parent', root.item.id]);
+  json(home, ['check', child.item.id]);
+  const template = json(home, ['templates', 'create', root.item.id, '--name', 'Review {{date}}']);
+  assert.equal(json(home, ['templates'])[0].id, template.id);
+  const used = json(home, ['templates', 'use', template.id, '-p', project.id, '--date', '2026-10-17']);
+  assert.equal(used.title, 'Review 2026-10-17');
+  assert.equal(used.body, 'Project: Workshop');
+  const copied = json(home, ['outline', used.id]).items[0].item;
+  assert.equal(json(home, ['presentation', copied.id]).checked, false);
+  assert.equal(json(home, ['presentation', child.item.id]).checked, true);
+  const view = json(home, ['views', 'create', 'Workshop reviews', '-p', project.id, '--type', 'note', '--query', 'Review']);
+  assert.equal(json(home, ['views'])[0].id, view.id);
+  assert.deepEqual(json(home, ['views', 'run', view.id]).items.map((item: { id: string }) => item.id), [used.id]);
+  assert.equal(cli(home, ['views', 'remove', view.id]).code, 2);
+  const edited = cli(home, ['views', 'edit', view.id, '--set', '-'], JSON.stringify({ name: 'All Workshop notes', filter: { project: project.id, type: 'note' } }));
+  assert.equal(edited.code, 0, edited.stderr);
+  assert.equal(json(home, ['views', 'show', view.id]).name, 'All Workshop notes');
+  assert.equal(json(home, ['views', 'run', view.id]).items.length, 2);
+  json(home, ['views', 'remove', view.id, '--yes']);
+  assert.deepEqual(json(home, ['views']), []);
+  assert.equal(json(home, ['show', used.id]).id, used.id);
+  assert.equal(cli(home, ['templates', 'use', template.id, '--date', '2026-02-30']).code, 1);
+});
+
 test('outline commands create, navigate, reorder and move persistent nested notes', () => {
   const home = tempHome();
   const root = json(home, ['outline', 'add', 'Japan']);

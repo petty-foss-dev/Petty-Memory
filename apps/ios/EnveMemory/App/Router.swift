@@ -47,6 +47,9 @@ enum Route: Hashable {
     case vault
     case vaultNote(String)
     case shares
+    case savedViews
+    case savedView(String)
+    case templates
 }
 
 enum CaptureKind: String, CaseIterable, Identifiable {

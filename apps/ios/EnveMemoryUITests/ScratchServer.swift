@@ -72,7 +72,21 @@ struct ScratchServer {
         }
     }
 
-    private func object(_ path: String, _ query: [URLQueryItem] = []) async throws -> [String: Any] {
+    func object(_ path: String, _ query: [URLQueryItem] = []) async throws -> [String: Any] {
+        guard let object = try await json(path, query) as? [String: Any] else {
+            throw FixtureError("GET \(path) didn't answer with a JSON object.")
+        }
+        return object
+    }
+
+    func list(_ path: String, _ query: [URLQueryItem] = []) async throws -> [[String: Any]] {
+        guard let list = try await json(path, query) as? [[String: Any]] else {
+            throw FixtureError("GET \(path) didn't answer with a JSON array of objects.")
+        }
+        return list
+    }
+
+    private func json(_ path: String, _ query: [URLQueryItem]) async throws -> Any {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { throw FixtureError("Bad server address.") }
         components.path += "/api/v1" + path
         components.queryItems = query.isEmpty ? nil : query
@@ -87,9 +101,6 @@ struct ScratchServer {
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else { throw FixtureError("GET \(path) answered HTTP \(status).") }
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw FixtureError("GET \(path) didn't answer with a JSON object.")
-        }
-        return object
+        return try JSONSerialization.jsonObject(with: data)
     }
 }

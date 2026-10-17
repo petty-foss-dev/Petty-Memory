@@ -25,6 +25,7 @@ import { ReferenceService } from './references.ts';
 import { ShareService } from './shares.ts';
 import { VaultService } from './vault.ts';
 import { VersionService, captureVersions } from './versions.ts';
+import { TemplateService, ViewService } from './workflows.ts';
 import { type Graph, ITEM_TYPES, type ItemType, type ProjectBriefing, type RelationKind } from './types.ts';
 
 export interface OpenOptions {
@@ -62,6 +63,8 @@ export class EnveMemory {
   readonly shares: ShareService;
   readonly editor: EditorService;
   readonly feed: FeedService;
+  readonly views: ViewService;
+  readonly templates: TemplateService;
   private readonly db: DatabaseSync;
   private readonly ctx: Context;
 
@@ -103,6 +106,8 @@ export class EnveMemory {
     this.shares = new ShareService(this.ctx, this.items);
     this.editor = new EditorService(this.ctx, this.items, this.outline, this.presentation);
     this.feed = new FeedService(this.ctx, this.items, this.projects);
+    this.views = new ViewService(this.ctx, this.items, this.projects);
+    this.templates = new TemplateService(this.ctx, this.items, this.projects);
   }
 
   get actor(): string {

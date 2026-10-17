@@ -4,8 +4,8 @@ import type {
   EditorCommand, EnveMemory,
   ExportSummary, Graph, Item, Intent, ItemDetail, ItemFilter, ItemPresentation, ItemType, ItemVersion, ItemVersionSummary, OutlineEntry,
   OutlineListOptions, OutlineMoveInput, OutlineNoteInput, OutlinePage, Project, ProjectBriefing, PublicShare, RecordDecisionInput,
-  RelatedItem, Rule, SaveLinkInput, SaveNoteInput, SearchHit, Settings, SyncResult, Task, UpdateItemInput, UpdateProjectInput,
-  UpdateTaskInput, VaultState,
+  RelatedItem, Rule, SaveLinkInput, SaveNoteInput, SavedView, SavedViewInput, SearchHit, Settings, SyncResult, Task, TemplateUseInput,
+  UpdateItemInput, UpdateProjectInput, UpdateTaskInput, VaultState, ViewPage,
 } from '@enve-memory/core';
 import type { ImportResult } from '@enve-memory/importers';
 
@@ -289,6 +289,17 @@ export interface Api {
   'vault.recover': (code: string) => VaultState | null;
   'vault.restoreVersion': (versionId: string) => ReturnType<EnveMemory['vault']['restoreVersion']>;
 
+  'views.list': () => SavedView[];
+  'views.get': (id: string) => SavedView;
+  'views.results': (id: string, options?: { before?: string; limit?: number }) => ViewPage;
+  'views.create': (input: SavedViewInput) => SavedView;
+  'views.update': (id: string, input: SavedViewInput) => SavedView;
+  'views.remove': (id: string) => void;
+
+  'templates.list': () => Item[];
+  'templates.create': (sourceId: string, name?: string) => ItemDetail;
+  'templates.instantiate': (id: string, input?: TemplateUseInput) => ItemDetail;
+
   'shares.list': () => PublicShare[];
   'shares.create': (rootId: string, options?: { excludedIds?: string[]; expiresAt?: string | null }) => CreatedShare;
   'shares.revoke': (shareId: string) => PublicShare;
@@ -433,6 +444,15 @@ export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
   'vault.recoveryKit': 'read',
   'vault.recover': 'write',
   'vault.restoreVersion': 'write',
+  'views.list': 'read',
+  'views.get': 'read',
+  'views.results': 'read',
+  'views.create': 'write',
+  'views.update': 'write',
+  'views.remove': 'write',
+  'templates.list': 'read',
+  'templates.create': 'write',
+  'templates.instantiate': 'write',
   'shares.list': 'read',
   'shares.create': 'write',
   'shares.revoke': 'write',

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
-import { EnveMemory, MemoryError, type EditProposal, type EditorCommand, type ItemPresentation, type RuleConditions, type Settings, defaultHome, listBackups, pathsFor, restoreBackup } from '@enve-memory/core';
+import { EnveMemory, MemoryError, type EditProposal, type EditorCommand, type ItemPresentation, type RuleConditions, type SavedViewInput, type Settings, defaultHome, listBackups, pathsFor, restoreBackup } from '@enve-memory/core';
 import { AiError, type AiProvider, PROVIDERS, PROVIDER_IDS, ask, createProvider, enrichItem, enrichWorker, envKeys, isProviderId, organizeWorker, proposeEdit, providerFor } from '@enve-memory/ai';
 import { attachLocalEmbedder, indexWorker } from '@enve-memory/embeddings';
 import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder } from '@enve-memory/importers';
@@ -45,6 +45,16 @@ Projects
   decide <project> <text…>     Record a decision     [--reason] [--supersedes id]…
 
 Organize
+  views                        List saved searches
+  views create <name…>         Save a dynamic view  [--query] [-p project] [--type] [-t tag] [--status] [--inbox]
+                               [--pinned] [--intent] [--review] [--attention] [--reminders] [--unopened days]
+  views edit <id> --set FILE    Replace name/query/filter with a JSON definition (- reads stdin)
+  views show <id>              Show the saved definition
+  views run <id>               Matching items, newest changed first  [--limit] [--before cursor]
+  views remove <id> --yes      Archive a saved definition, preserving its results
+  templates                    List reusable note/checklist trees
+  templates create <source-id> Copy an ordinary note tree  [--name]
+  templates use <id>           Create a fresh copy  [--title] [-p project] [--date YYYY-MM-DD]
   outline [parent-id]          Ordered roots or direct children  [--limit] [--offset] [--all]
   outline show <id>            Placement and ancestor path
   outline add <title…>         New root or child note  [--parent id] [--body] [-p project] [-t tag]…
@@ -193,6 +203,9 @@ const { values: opts, positionals } = parseCommandLine({
     reminders: { type: 'boolean' },
     review: { type: 'boolean' },
     attention: { type: 'string' },
+    query: { type: 'string' },
+    inbox: { type: 'boolean' },
+    date: { type: 'string' },
     exclude: { type: 'string', multiple: true },
     expires: { type: 'string' },
     yes: { type: 'boolean' },
@@ -242,6 +255,59 @@ function recoveryMessage(result: { restored: number; missingFiles?: { filename: 
 
 async function run(memory: EnveMemory): Promise<void> {
   switch (command) {
+    case 'views': {
+      const action = rest[0] ?? 'list';
+      if (action === 'list') {
+        const views = memory.views.list();
+        return emit(views, views.map((view) => `${view.name}\n    ${view.id}`).join('\n') || 'No saved views.');
+      }
+      if (action === 'create' || action === 'edit') {
+        let input: SavedViewInput;
+        if (action === 'edit') {
+          if (!opts.set) throw new UsageError('Use --set FILE to replace a saved view definition.');
+          input = JSON.parse(readFileSync(opts.set === '-' ? 0 : resolve(opts.set), 'utf8')) as SavedViewInput;
+        } else {
+          input = { name: text(1, 'name'), query: opts.query, filter: {
+            project: opts.project, type: opts.type, tag: opts.tag?.[0], taskStatus: opts.status, inbox: opts.inbox,
+            pinned: opts.pinned, intent: opts.intent, review: opts.review, attention: opts.attention,
+            reminders: opts.reminders, unopenedDays: opts.unopened === undefined ? undefined : Number(opts.unopened),
+          } };
+        }
+        const view = action === 'create' ? memory.views.create(input) : memory.views.update(arg(1, 'id'), input);
+        return emit(view, `Saved view ${view.name}\n    ${view.id}`);
+      }
+      if (action === 'show') {
+        const view = memory.views.get(arg(1, 'id'));
+        return emit(view, JSON.stringify(view, null, 2));
+      }
+      if (action === 'run') {
+        const page = memory.views.results(arg(1, 'id'), { before: opts.before, limit: limit() });
+        return emit(page, [page.items.map(format.itemLine).join('\n') || 'No matching items.', page.next ? `Next page: --before ${page.next}` : ''].filter(Boolean).join('\n'));
+      }
+      if (action === 'remove') {
+        if (!opts.yes) throw new UsageError('Use --yes to archive this saved view.');
+        const id = arg(1, 'id');
+        memory.views.remove(id);
+        return emit({ ok: true }, `Archived saved view ${id}.`);
+      }
+      throw new UsageError('Use views list, create, edit, show, run or remove.');
+    }
+    case 'templates': {
+      const action = rest[0] ?? 'list';
+      if (action === 'list') {
+        const templates = memory.templates.list();
+        return emit(templates, templates.map(format.itemLine).join('\n') || 'No templates. Save an ordinary note tree with templates create <source-id>.');
+      }
+      if (action === 'create') {
+        const template = memory.templates.create(arg(1, 'source-id'), opts.name);
+        return emit(template, `Saved template ${template.id}`);
+      }
+      if (action === 'use') {
+        const item = memory.templates.instantiate(arg(1, 'id'), { title: opts.title, project: opts.project, date: opts.date });
+        return emit(item, `Created note tree ${item.id}`);
+      }
+      throw new UsageError('Use templates list, create or use. Edit a template with the ordinary edit command.');
+    }
     case 'note': {
       const item = memory.items.saveNote({ body: text(0, 'text'), title: opts.title, project: opts.project, tags: opts.tag });
       return emit(item, `Saved note ${item.id}`);

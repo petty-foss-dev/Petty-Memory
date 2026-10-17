@@ -55,6 +55,8 @@ const PATHS = {
   share: 'M4 13v7h16v-7M12 3v12M8 7l4-4 4 4',
   flag: 'M5 21V4h12l-2.5 4L17 12H5',
   star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3l-5.5 2.9 1-6.2L3 9.6l6.2-.9z',
+  filter: 'M4 5h16l-6 7.5V19l-4 2v-8.5z',
+  template: 'M5 4h10l4 4v12H5zM9 9h3M9 13h6M9 17h6M15 4v4h4',
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -10,7 +10,7 @@ import { parseWhen } from './when.ts';
 import type { ProjectService } from './projects.ts';
 import type { SettingsService } from './settings.ts';
 import {
-  ATTENTION_LEVELS, type AiSuggestions, INTENTS, type Intent, ITEM_TYPES, type Item, type ItemDetail, type ItemMetadata, type ItemType, RELATION_KINDS, type RelatedItem, type RelationKind,
+  ATTENTION_LEVELS, type AiSuggestions, INTENTS, type Intent, ITEM_TYPES, type Item, type ItemDetail, type ItemMetadata, type ItemType, RELATION_KINDS, type RelatedItem, type RelationKind, TASK_STATUSES,
 } from './types.ts';
 
 export interface ItemFilter {
@@ -32,6 +32,8 @@ export interface ItemFilter {
   review?: boolean;
   attention?: string;
   secret?: boolean;
+  /** Only tasks with this status. */
+  taskStatus?: string;
 }
 
 export interface NewItem {
@@ -212,7 +214,7 @@ export class ItemService {
   }
 
   /** Low-level create shared by the typed services. Returns the new item's id. */
-  insert(input: NewItem): string {
+  insert(input: NewItem, { automations = true }: { automations?: boolean } = {}): string {
     const projectId = input.project ? this.projects.resolve(input.project).id : null;
     const tags = (input.tags ?? []).map(normalizeTag);
     const id = input.id ?? newId();
@@ -240,7 +242,7 @@ export class ItemService {
       });
       if (tags.length) this.applyTags(id, projectId, tags, []);
     });
-    this.afterSave?.(id);
+    if (automations) this.afterSave?.(id);
     return id;
   }
 
@@ -534,6 +536,11 @@ export class ItemService {
     if (filter.attention !== undefined) {
       where.push(`coalesce(json_extract(i.metadata, '$.presentation.attention'), 'normal') = ?`);
       params.push(oneOf(filter.attention, ATTENTION_LEVELS, 'attention'));
+    }
+    // A subquery rather than the tasks join, since hybrid search applies these clauses to a bare items scan.
+    if (filter.taskStatus !== undefined) {
+      where.push('EXISTS (SELECT 1 FROM tasks ts WHERE ts.item_id = i.id AND ts.status = ?)');
+      params.push(oneOf(filter.taskStatus, TASK_STATUSES, 'task status'));
     }
     if (filter.tag !== undefined) {
       where.push('EXISTS (SELECT 1 FROM item_tags it JOIN tags tg ON tg.id = it.tag_id WHERE it.item_id = i.id AND tg.name = ?)');

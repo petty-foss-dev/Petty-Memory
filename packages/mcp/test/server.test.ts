@@ -132,8 +132,8 @@ test('scopes decide which tools a client can see', async () => {
 
 test('feature tools follow read/write scopes and never reach the vault, shares, sync or deletion', async () => {
   const names = async (access?: ServerAccess) => (await (await connect(access)).client.listTools()).tools.map((t) => t.name);
-  const readTools = ['get_presentation', 'list_item_versions', 'get_item_version', 'list_references', 'list_project_memory_versions'];
-  const writeTools = ['set_presentation', 'set_checked', 'reset_checklist', 'restore_item_version', 'insert_reference', 'split_note', 'merge_notes'];
+  const readTools = ['get_presentation', 'list_item_versions', 'get_item_version', 'list_references', 'list_project_memory_versions', 'list_saved_views', 'get_saved_view', 'run_saved_view', 'list_templates'];
+  const writeTools = ['set_presentation', 'set_checked', 'reset_checklist', 'restore_item_version', 'insert_reference', 'split_note', 'merge_notes', 'create_saved_view', 'save_template', 'use_template'];
   const reader = await names({ scopes: ['read'], transport: 'http' });
   const writer = await names({ scopes: ['write'], transport: 'http' });
   assert.ok(readTools.every((n) => reader.includes(n) && !writer.includes(n)));
@@ -141,6 +141,29 @@ test('feature tools follow read/write scopes and never reach the vault, shares, 
   const everything = await names();
   assert.equal(everything.some((n) => /vault|secret|share|public|sync|delete|purge|unrelate|backup|propose|apply|undo/.test(n)), false);
   assert.deepEqual(await names({ scopes: ['read', 'write', 'secrets', 'sync'], transport: 'http' }), await names({ scopes: ['read', 'write'], transport: 'http' }));
+});
+
+test('saved views and templates support repeatable agent workflows without destructive tools', async () => {
+  const { call, client } = await connect();
+  const project = await call('create_project', { name: 'Workshop' });
+  const root = await call('create_outline_note', { title: 'Review {{date}}', text: 'Project: {{project}}' });
+  const child = await call('create_outline_note', { parent_id: root.item.id, title: 'Check tools' });
+  await call('set_checked', { id: child.item.id, checked: true });
+  const template = await call('save_template', { source_id: root.item.id, name: 'Review {{date}}' });
+  assert.equal((await call('list_templates'))[0].id, template.id);
+  const used = await call('use_template', { id: template.id, project: project.id, date: '2026-10-17' });
+  assert.equal(used.title, 'Review 2026-10-17');
+  assert.equal(used.body, 'Project: Workshop');
+  const copied = await call('list_outline', { parent_id: used.id });
+  assert.equal(copied.items.length, 1);
+  assert.equal((await call('get_presentation', { id: copied.items[0].item.id })).presentation.checked, false);
+  assert.equal((await call('get_presentation', { id: child.item.id })).presentation.checked, true);
+  const view = await call('create_saved_view', { name: 'Workshop reviews', project: project.id, query: 'Review', type: 'note' });
+  assert.equal((await call('list_saved_views'))[0].id, view.id);
+  assert.equal((await call('get_saved_view', { id: view.id })).filter.project, project.id);
+  assert.deepEqual((await call('run_saved_view', { id: view.id })).items.map((item: { id: string }) => item.id), [used.id]);
+  const names = (await client.listTools()).tools.map((tool) => tool.name);
+  assert.equal(names.some((name) => /remove.*view|delete.*template/.test(name)), false);
 });
 
 test('checklist, history and reference tools work against a real library', async () => {

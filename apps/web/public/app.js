@@ -4,8 +4,9 @@ import { createDetail } from './detail.js';
 import { clearEditHistory, isEditable, redoEdit, undoEdit } from './edits.js';
 import { createOutline } from './outline.js';
 import { createSharesView } from './shares.js';
-import { displayTitle, isSecret, presentationOf } from './text.js';
 import { createVaultView } from './vault.js';
+import { createTemplatesView, createViewsView } from './workflows.js';
+import { itemRow } from './rows.js';
 
 const POLL_MS = 30_000;
 const PAGE = 25;
@@ -15,6 +16,8 @@ const VIEWS = [
   ['outline', 'Outline'],
   ['search', 'Search'],
   ['highlights', 'Highlights'],
+  ['views', 'Saved views'],
+  ['templates', 'Templates'],
   ['projects', 'Projects'],
   ['vault', 'Vault'],
   ['shares', 'Shares'],
@@ -125,6 +128,14 @@ function showShell(root) {
         return undefined;
       }
     },
+    openView(id) {
+      views.views.reveal(id);
+      show('views');
+    },
+    useTemplate(template) {
+      show('templates');
+      views.templates.reveal(template);
+    },
     async changed({ outline: refreshOutline = true, detail: refreshDetail = true } = {}) {
       await Promise.all([
         refreshOutline ? outline.refresh() : null,
@@ -141,6 +152,8 @@ function showShell(root) {
     outline: { el: outline.el, refresh: () => outline.refresh() },
     search: createSearchView(ctx),
     highlights: createHighlightsView(ctx),
+    views: createViewsView(ctx),
+    templates: createTemplatesView(ctx),
     projects: createProjectsView(ctx),
     vault: createVaultView(ctx),
     shares: createSharesView(ctx),
@@ -270,14 +283,6 @@ async function itemsUpTo(filter, want) {
 }
 
 const moreButton = (shown, onClick) => h('button', { type: 'button', class: 'btn small', onClick }, `Show more (${shown} shown)`);
-
-function itemRow(item, ctx, extra) {
-  const p = presentationOf(item);
-  return h('li', null, h('button', { type: 'button', class: `row attention-${p.attention}`, onClick: () => ctx.select(item.id) },
-    h('span', { class: 'row-title' }, isSecret(item) ? '🔒 Secret note' : displayTitle(item)),
-    h('span', { class: 'meta' }, [item.type, item.project?.name, extra ?? `updated ${when(item.updatedAt)}`].filter(Boolean).join(' · ')),
-    p.review ? h('span', { class: 'badge review' }, 'Review') : null));
-}
 
 function createSearchView(ctx) {
   const q = h('input', { type: 'search', placeholder: 'Search everything', 'aria-label': 'Search' });

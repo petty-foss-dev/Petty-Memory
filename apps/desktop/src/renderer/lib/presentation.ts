@@ -12,6 +12,13 @@ export const isChecked = (item: Pick<Item, 'metadata'> & { task?: TaskFields | n
 
 export const isSecret =(item: Pick<Item, 'metadata'>) => item.metadata.secret === true;
 
+export const templateOf = (item: Pick<Item, 'metadata'>) => {
+  const template = item.metadata.template as { version?: unknown; rootId?: unknown } | undefined;
+  return template?.version === 1 && typeof template.rootId === 'string' ? { rootId: template.rootId } : null;
+};
+
+export const isSavedView = (item: Pick<Item, 'metadata'>) => (item.metadata.savedView as { version?: unknown } | undefined)?.version === 1;
+
 export const KIND_LABELS: Record<ItemPresentation['kind'], string> = { text: 'Text', heading: 'Heading', section: 'Section break' };
 export const ATTENTION_LABELS: Record<ItemPresentation['attention'], string> = { high: 'High', normal: 'Normal', low: 'Low' };
 

@@ -1,4 +1,4 @@
-import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type SyncRecord } from '@enve-memory/core';
+import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type SavedViewInput, type SyncRecord } from '@enve-memory/core';
 import { type AiProvider, proposeEdit } from '@enve-memory/ai';
 import { HttpError } from './errors.ts';
 
@@ -154,7 +154,7 @@ export const routes: Route[] = [
     method: 'GET', pattern: path('/capabilities'), scope: 'read',
     handle: ({ memory }) => ({
       api: 1, schema: memory.schemaVersion,
-      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares'],
+      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates'],
       maxWait: 25_000,
     }),
   },
@@ -186,6 +186,35 @@ export const routes: Route[] = [
   {
     method: 'GET', pattern: path('/items'), scope: 'read',
     handle: ({ memory, query }) => memory.items.list(queryFilter(query), queryLimit(query)),
+  },
+  { method: 'GET', pattern: path('/views'), scope: 'read', handle: ({ memory }) => memory.views.list() },
+  {
+    method: 'POST', pattern: path('/views'), scope: 'write', status: 201,
+    handle: ({ memory, body }) => memory.views.create(body as unknown as SavedViewInput),
+  },
+  { method: 'GET', pattern: path('/views/:id'), scope: 'read', handle: ({ memory, params }) => memory.views.get(params[0]!) },
+  {
+    method: 'PATCH', pattern: path('/views/:id'), scope: 'write',
+    handle: ({ memory, params, body }) => memory.views.update(params[0]!, body as unknown as SavedViewInput),
+  },
+  {
+    method: 'DELETE', pattern: path('/views/:id'), scope: 'write',
+    handle: ({ memory, params }) => { memory.views.remove(params[0]!); return { ok: true }; },
+  },
+  {
+    method: 'GET', pattern: path('/views/:id/items'), scope: 'read',
+    handle: ({ memory, params, query }) => memory.views.results(params[0]!, { before: query.get('before') ?? undefined, limit: queryLimit(query) }),
+  },
+  { method: 'GET', pattern: path('/templates'), scope: 'read', handle: ({ memory }) => memory.templates.list() },
+  {
+    method: 'POST', pattern: path('/templates'), scope: 'write', status: 201,
+    handle: ({ memory, body }) => memory.templates.create(str(body, 'sourceId') ?? '', str(body, 'name')),
+  },
+  {
+    method: 'POST', pattern: path('/templates/:id/use'), scope: 'write', status: 201,
+    handle: ({ memory, params, body }) => memory.templates.instantiate(params[0]!, {
+      title: str(body, 'title'), project: nullableStr(body, 'project'), date: str(body, 'date'),
+    }),
   },
   {
     method: 'GET', pattern: path('/outline'), scope: 'read',

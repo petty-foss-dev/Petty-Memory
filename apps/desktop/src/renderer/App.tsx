@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { call, errorMessage, onCommand, onOpenItem, useLive } from './lib/api.ts';
 import { SHELVES } from '../shared/ipc.ts';
 import { detectCapture } from './lib/capture.ts';
@@ -21,6 +21,9 @@ import { ProjectView } from './views/Project.tsx';
 import { SearchPalette } from './views/Search.tsx';
 import { Settings } from './views/Settings.tsx';
 import { Tasks } from './views/Tasks.tsx';
+
+const SavedViews = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.SavedViews })));
+const Templates = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.Templates })));
 
 const isMac = window.enve.platform === 'darwin';
 const mod = (event: KeyboardEvent) => (isMac ? event.metaKey : event.ctrlKey);
@@ -195,6 +198,8 @@ export function App() {
             {nav({ view: 'outline' }, 'outline', 'Outline')}
             {LIBRARY_TABS.map((tab) => nav({ view: 'library', type: tab.type }, tab.type ?? 'library', tab.label))}
             {nav({ view: 'graph' }, 'graph', 'Graph')}
+            {nav({ view: 'views' }, 'filter', 'Saved views')}
+            {nav({ view: 'templates' }, 'template', 'Templates')}
             <div className="nav-heading"><span>Shelves</span></div>
             {nav({ view: 'highlights' }, 'star', 'Highlights')}
             {SHELVES.map((shelf) => nav({ view: 'shelf', shelf }, shelf === 'pinned' ? 'pin' : shelf, SHELF_COPY[shelf].title, shelves.data?.[shelf]))}
@@ -219,6 +224,10 @@ export function App() {
           {route.view === 'graph' && <GraphView />}
           {route.view === 'shelf' && <ShelfView shelf={route.shelf} />}
           {route.view === 'reminders' && <RemindersView />}
+          <Suspense fallback={<div className="page" role="status">Loading…</div>}>
+            {route.view === 'views' && <SavedViews id={route.id} />}
+            {route.view === 'templates' && <Templates />}
+          </Suspense>
           {route.view === 'settings' && <Settings section={route.section} />}
         </main>
 

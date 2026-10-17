@@ -99,7 +99,7 @@ struct HomeView: View {
     }
 }
 
-/// The outline, plus the vault and public links when this phone may use them.
+/// The outline, saved views and templates, plus the vault and public links when this phone may use them.
 private struct LibraryShortcuts: View {
     @Environment(Router.self) private var router
     @Environment(Connection.self) private var connection
@@ -108,6 +108,10 @@ private struct LibraryShortcuts: View {
         FlowLayout(spacing: HearthSpacing.sm) {
             FilterChip(title: "Outline", systemImage: "list.bullet.indent", isSelected: false) { router.open(.outline(nil)) }
                 .accessibilityIdentifier("OpenOutline")
+            FilterChip(title: "Saved views", systemImage: "line.3.horizontal.decrease.circle", isSelected: false) { router.open(.savedViews) }
+                .accessibilityIdentifier("OpenSavedViews")
+            FilterChip(title: "Templates", systemImage: "doc.on.doc", isSelected: false) { router.open(.templates) }
+                .accessibilityIdentifier("OpenTemplates")
             if connection.canUseVault {
                 FilterChip(title: "Vault", systemImage: "lock", isSelected: false) { router.open(.vault) }
                     .accessibilityIdentifier("OpenVault")

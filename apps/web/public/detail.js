@@ -5,6 +5,7 @@ import { pickItem } from './picker.js';
 import { createShareForm } from './shares.js';
 import { displayTitle, isSecret, presentationOf, renderText } from './text.js';
 import { secretPanel } from './vault.js';
+import { workflowPanel } from './workflows.js';
 
 const RELATION_KINDS = [['related_to', 'Related to'], ['references', 'References'], ['derived_from', 'Derived from'], ['depends_on', 'Depends on']];
 const AI_PRESETS = [
@@ -131,6 +132,7 @@ export function createDetail(ctx) {
       h('p', { class: 'meta' }, [item.type, item.project?.name, `updated ${when(item.updatedAt)}`].filter(Boolean).join(' · ')),
       secret ? secretPanel(item, ctx) : contentSection(state),
       secret ? null : presentationSection(state),
+      secret ? null : workflowPanel(state, ctx),
       connectionsSection(state),
       historySection(state),
       writable && !secret && item.type !== 'decision' ? aiSection(state) : null,

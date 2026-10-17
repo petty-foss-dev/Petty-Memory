@@ -133,6 +133,8 @@ public struct ItemMetadata: Codable, Hashable, Sendable {
     public var secret: Bool?
     /// A secret note's ciphertext. Only `VaultCrypto` opens it, on this device.
     public var vault: SecretEnvelope?
+    public var savedView: SavedViewMetadata?
+    public var template: TemplateMetadata?
 
     public init() {}
 }

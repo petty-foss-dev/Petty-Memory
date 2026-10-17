@@ -449,7 +449,7 @@ describe('Petty Memory desktop', { timeout: 180_000 }, () => {
     await page.getByLabel('Provider').selectOption('ollama');
     await page.getByLabel(/Server address/).fill(process.env.ENVE_E2E_OLLAMA!);
     await page.getByLabel('Model').fill('qwen2.5:1.5b');
-    await page.getByRole('button', { name: 'Save' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     await page.getByText('AI settings saved').waitFor();
     await page.getByRole('button', { name: 'Test' }).click();
     await page.getByText(/^Replied:/).waitFor({ timeout: 90_000 });

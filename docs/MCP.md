@@ -21,6 +21,11 @@ Two transports:
 |---|---|---|
 | `search` | read | Hybrid keyword + meaning search with project / type / tag filters; each hit says whether it matched on `keyword`, `semantic` or `both` |
 | `get_item` | read | Full item with tags, task fields, relations, attachments and archived `content` (paged 20k characters at a time via `content_offset`) |
+| `list_saved_views`, `get_saved_view` | read | Named recurring keyword searches and their validated filters |
+| `run_saved_view` | read | Current active ordinary matches with compact previews; continue with `next` as `before` |
+| `create_saved_view` | write | Create a name/query/filter definition without changing its matching items |
+| `list_templates` | read | Reusable ordinary note/checklist roots; inspect with existing item/outline tools |
+| `save_template`, `use_template` | write | Copy an ordinary note tree into a template, or instantiate a fresh tree; completion reset and internal references remapped |
 | `list_items` | read | Recent items filtered by project / type / tag or a shelf (pinned, intent, unopened for N days, reminders); bodies trimmed to a 280-char preview |
 | `list_outline` | read | Ordered direct children (`parent_id`) or roots; `offset`, `limit` and `include_archived`; returns entries with compact item previews, parent, position, child count and total |
 | `get_outline_item` | read | One outline entry and its root-to-parent ancestor path; use `get_item` for full text |

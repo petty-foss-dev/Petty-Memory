@@ -398,6 +398,17 @@ export function createHandlers(ctx: HandlerContext): Handlers {
     },
     'vault.restoreVersion': (versionId) => memory().vault.restoreVersion(str(versionId, 'Version')),
 
+    'views.list': () => memory().views.list(),
+    'views.get': (id) => memory().views.get(str(id, 'View')),
+    'views.results': (id, options) => memory().views.results(str(id, 'View'), options),
+    'views.create': (input) => memory().views.create(input),
+    'views.update': (id, input) => memory().views.update(str(id, 'View'), input),
+    'views.remove': (id) => memory().views.remove(str(id, 'View')),
+
+    'templates.list': () => memory().templates.list(),
+    'templates.create': (sourceId, name) => memory().templates.create(str(sourceId, 'Note'), name),
+    'templates.instantiate': (id, input) => memory().templates.instantiate(str(id, 'Template'), input),
+
     'shares.list': () => memory().shares.list(),
     'shares.create': (rootId, options) => {
       const { share, token } = memory().shares.create(rootId, options);

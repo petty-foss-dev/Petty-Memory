@@ -69,6 +69,8 @@ These live in `items.metadata`, so the Item shape and the sync record are unchan
 - `presentation`: `{kind: text|heading|section, attention: normal|high|low, review, checklist, hideCompleted, checked, autoOrganize}`, with defaults filled in on read.
 - `secret: true` and `vault`: a secret note's sealed envelope `{v: 1, kdf, salt, iv, tag, data}` (AES-256-GCM, item id as associated data; `kdf` is PBKDF2-SHA256 600,000 or the older scrypt). The note's `title` is "Secret note" and its `body` is empty.
 - `organized`: `{hash, at}`, the subtree state the background organizer last left, so its own edits don't trigger another pass.
+- `savedView`: `{version: 1, query, filter}` on an ordinary note whose title names the view. Filters are whitelisted and project references resolve to stable IDs. Removing a view archives its note; matching items are unchanged.
+- `template`: `{version: 1, rootId}` on copied template notes. Root and members use fresh UUIDv7 identities; using the template creates ordinary notes without this marker. Editing its text and outline uses the existing item services. No schema migration or separate sync entity is needed.
 
 Inline references are stored in body text as `[[item:<UUID>|label]]`; backlinks are parsed from them, not stored.
 

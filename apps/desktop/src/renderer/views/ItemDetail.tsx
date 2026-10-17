@@ -1,9 +1,9 @@
 import type { ItemDetail, ItemPresentation, TaskPriority, TaskStatus } from '@enve-memory/core';
-import { useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import { call, errorMessage, useLive } from '../lib/api.ts';
 import { applyEdit } from '../lib/edits.ts';
 import { TYPE_LABELS, actorInfo, displayTitle, formatBytes, formatDate, formatDateTime, relativeTime, siteOf } from '../lib/format.ts';
-import { ATTENTION_LABELS, KIND_LABELS, isSecret, presentationOf } from '../lib/presentation.ts';
+import { ATTENTION_LABELS, KIND_LABELS, isSavedView, isSecret, presentationOf, templateOf } from '../lib/presentation.ts';
 import { useApp } from '../context.ts';
 import { type EditorHandle, Icon, MarkdownEditor, MarkdownView, ProjectSelect, TagEditor, Toggle, TypeIcon, useDraft, useFeedback } from '../ui.tsx';
 import { AiEditDialog } from './AiEdit.tsx';
@@ -14,6 +14,9 @@ import { ItemPicker } from './ItemPicker.tsx';
 import { MoveDialog } from './OutlineMove.tsx';
 import { ShareDialog } from './Share.tsx';
 import { SecretBody } from './Vault.tsx';
+
+const SaveTemplateDialog = lazy(() => import('./Workflows.tsx').then((module) => ({ default: module.SaveTemplateDialog })));
+const UseTemplateDialog = lazy(() => import('./Workflows.tsx').then((module) => ({ default: module.UseTemplateDialog })));
 
 const STATUS_LABELS: Record<TaskStatus, string> = { open: 'Open', in_progress: 'In progress', done: 'Done', cancelled: 'Cancelled' };
 
@@ -42,13 +45,16 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
   const body = useDraft(item.body);
   const [showHistory, setShowHistory] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
-  const [dialog, setDialog] = useState<'ai' | 'share' | 'reference' | null>(null);
+  const [dialog, setDialog] = useState<'ai' | 'share' | 'reference' | 'template' | 'useTemplate' | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const editor = useRef<EditorHandle>(null);
   const references = useReferences(item.id);
   const titles = useMemo(() => new Map((references.data?.outgoing ?? []).map((r) => [r.id, r.title || 'Untitled'])), [references.data]);
   const decision = item.type === 'decision';
   const secret = isSecret(item);
+  const template = templateOf(item);
+  const savedView = isSavedView(item);
+  const templatable = item.type === 'note' && !secret && !template && !savedView && !item.archivedAt;
 
   const fail = (error: unknown) => toast(errorMessage(error), 'error');
   // Saved through the editor journal against the text this drawer loaded, so a newer edit elsewhere is never overwritten.
@@ -116,7 +122,31 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
           <button className="button small" onClick={() => setDialog('ai')}><Icon name="sparkle" size={14} /> Edit with AI…</button>
         )}
         {!secret && <button className="button small" onClick={() => setDialog('share')}><Icon name="share" size={14} /> Share…</button>}
+        {templatable && (
+          <button
+            className="button small"
+            disabled={title.dirty || body.dirty}
+            title={title.dirty || body.dirty ? 'Save or discard your changes first' : 'Copy this note and the notes inside it into a reusable template'}
+            onClick={() => setDialog('template')}
+          >
+            <Icon name="template" size={14} /> Save as template…
+          </button>
+        )}
+        {template?.rootId === item.id && !item.archivedAt && (
+          <button className="button small" disabled={title.dirty || body.dirty} title={title.dirty || body.dirty ? 'Save or discard your changes first' : undefined} onClick={() => setDialog('useTemplate')}><Icon name="template" size={14} /> Use template…</button>
+        )}
       </div>
+      {template && (
+        <p className="muted small">
+          {template.rootId === item.id ? 'This is a template.' : 'This note is part of a template.'} Edits here change future copies, not ones already made.
+          {template.rootId !== item.id && <> <button className="link-button" onClick={() => openItem(template.rootId)}>Open the template</button></>}
+        </p>
+      )}
+      {savedView && (
+        <p className="muted small">
+          This note holds a saved view’s settings. <button className="link-button" onClick={() => go({ view: 'views', id: item.id })}>Open the view</button>
+        </p>
+      )}
 
       {!decision && <PresentationControls item={item} />}
 
@@ -265,6 +295,10 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
       </section>
 
       {dialog === 'ai' && <AiEditDialog rootId={item.id} title={displayTitle(item)} onClose={() => setDialog(null)} />}
+      <Suspense fallback={<p className="muted" role="status">Loading template…</p>}>
+        {dialog === 'template' && <SaveTemplateDialog item={item} onClose={() => setDialog(null)} />}
+        {dialog === 'useTemplate' && <UseTemplateDialog template={item} onClose={() => setDialog(null)} />}
+      </Suspense>
       {dialog === 'share' && <ShareDialog rootId={item.id} title={displayTitle(item)} onClose={() => setDialog(null)} />}
       {dialog === 'reference' && (
         <ItemPicker

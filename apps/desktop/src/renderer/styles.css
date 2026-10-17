@@ -3252,3 +3252,32 @@ button.outline-toggle:hover {
   gap: 8px;
   margin-top: 16px;
 }
+
+/* Saved views and templates */
+
+.workflow-examples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.workflow-tabs {
+  margin-bottom: 18px;
+}
+
+.workflow-tabs .chip {
+  font-size: 13px;
+  padding: 3px 12px;
+}
+
+.workflow-view > .chips {
+  margin-bottom: 12px;
+}
+
+.dialog.workflow-dialog {
+  width: min(620px, 94vw);
+}
+
+.workflow-help {
+  margin: 12px 0 0;
+}

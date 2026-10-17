@@ -21,6 +21,8 @@ export type Route =
   | { view: 'graph' }
   | { view: 'shelf'; shelf: Shelf }
   | { view: 'reminders' }
+  | { view: 'views'; id?: string }
+  | { view: 'templates' }
   | { view: 'settings'; section?: SettingsSection };
 
 export interface AppState {

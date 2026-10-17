@@ -42,6 +42,13 @@ test('encrypted files, recovery and vault history are allow-listed with the righ
   for (const method of ['vault.outline', 'vault.files', 'vault.saveFile', 'vault.recoveryKit'] as Method[]) assert.equal(METHOD_KINDS[method], 'read', method);
 });
 
+test('saved views and templates read and write with the right kinds', () => {
+  for (const method of ['views.create', 'views.update', 'views.remove', 'templates.create', 'templates.instantiate'] as Method[]) {
+    assert.equal(METHOD_KINDS[method], 'write', method);
+  }
+  for (const method of ['views.list', 'views.get', 'views.results', 'templates.list'] as Method[]) assert.equal(METHOD_KINDS[method], 'read', method);
+});
+
 test('isMethod rejects inherited and made-up names', () => {
   for (const bad of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'items', 'items.nuke', '', 42, null, undefined, {}, ['items.get']]) {
     assert.equal(isMethod(bad), false, String(bad));

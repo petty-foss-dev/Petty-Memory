@@ -28,6 +28,13 @@ Errors are `{"error": {"code", "message"}}` with the status: `401 unauthorized`,
 |---|---|---|
 | `GET /status` | none | `{name: "enve-memory", version, api: 1}` |
 | `GET /whoami` | any token | The calling client: name, scopes, last used |
+| `GET /views`, `GET /views/:id` | read | Named view definitions: `{id, name, query, filter, createdAt, updatedAt}` |
+| `POST /views`, `PATCH /views/:id` | write | `{name, query?, filter?}`. PATCH replaces the definition; omitted filters reset. Whitelisted filters only, stable project IDs. |
+| `GET /views/:id/items?before=&limit=` | read | `{items, next}`. Active ordinary matches, ordered by changed time and ID. `next` is the next `before` cursor; maximum page size 200. |
+| `DELETE /views/:id` | write | Archive the definition; matching items are unchanged. |
+| `GET /templates` | read | Active reusable ordinary note-tree roots. |
+| `POST /templates` | write | `{sourceId, name?}` → new template root. Atomic deep copy, source unchanged; notes only, no attachments or secret descendants. |
+| `POST /templates/:id/use` | write | `{title?, project?: id \| null, date?: YYYY-MM-DD}` → fresh ordinary note tree. Default Inbox; date defaults UTC today. |
 | `GET /search?q=&project=&type=&tag=&limit=&archived=` | read | Hybrid keyword + semantic hits: `{id, type, title, url, project, snippet, match, taskStatus, updatedAt}` |
 | `GET /items?project=&type=&tag=&inbox=true&limit=&before=` | read | Newest first. The next page is `before=<updatedAt>,<id>` of the last item. Shelves: `pinned=true`, `intent=read\|watch\|buy\|revisit`, `unopened=<days>`, `reminders=true` (soonest first). |
 | `GET /outline?parent=&limit=&offset=&archived=` | read | Ordered direct children, or roots when `parent` is omitted. Returns `{items: [{item, parentId, position, childCount}], total}`. `limit` is capped at 200; continue with `offset`. |

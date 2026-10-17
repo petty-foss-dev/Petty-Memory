@@ -27,8 +27,10 @@ public struct ResponseCache: Sendable {
         let parts = endpoint.path.split(separator: "/").map(String.init)
         switch (parts.first, parts.count) {
         case ("items", 1), ("items", 2), ("outline", 1), ("outline", 2), ("projects", 1), ("projects", 2),
-             ("tasks", 1), ("search", 1), ("reminders", 1):
+             ("tasks", 1), ("search", 1), ("reminders", 1), ("views", 1), ("views", 2), ("templates", 1):
             return true
+        case ("views", 3):
+            return parts[2] == "items"
         case ("items", 3):
             return ["references", "checklist", "presentation"].contains(parts[2])
         case ("outline", 3):

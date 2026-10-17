@@ -32,6 +32,8 @@
 - **Secret notes and public links.** Passphrase-encrypted notes, nested secret branches and encrypted files, sealed on the device in the browser and on iPhone, with portable recovery kits. Read-only public links to a chosen subtree, with parts left out, expiry and revocation. See the [security model](docs/SECURITY.md); these features have engineering and interoperability tests, but no production security audit.
 - **In the browser.** A browser client served by the desktop app or a small self-hosted launcher ([apps/web](apps/web)), for your own devices.
 - **Shelves and reminders.** Pinned, Read, Watch, Buy, Revisit, "unopened for a month". Reminders take plain words ("tomorrow", "friday") and notify on the desktop, the phone or in the browser.
+- **Saved views.** Name a recurring search such as "Open Garage tasks" or "Security articles to read". Combine keywords, project, type, tag, task status and attention filters; the results follow the current library. Available on desktop, web, iPhone, CLI and MCP.
+- **Reusable templates.** Turn an ordinary note/checklist tree into an editable template, then create fresh copies for meeting notes, research briefs or recurring checklists. Copies keep nesting and references, reset completed boxes and expand `{{date}}` and `{{project}}`. [Examples and limits](docs/WORKFLOWS.md).
 - **Optional AI, bring your own.** Ollama, OpenAI, Anthropic, Gemini, OpenRouter or any OpenAI-compatible server for summaries, tag and project suggestions (or automatic filing), and cited answers from your own library. Everything else works with AI off.
 - **Automations.** For example, "links from github.com → #code, file into Development".
 - **Sync between your computers** through a folder you already sync (iCloud Drive, Dropbox, Syncthing), with optional passphrase encryption, or through a Petty Memory server you run yourself. Server sync watches local changes and long-polls for incoming work; folder sync runs periodically. Conflicting text is retained for review.
@@ -70,6 +72,16 @@ A few differences matter when choosing how to run it:
 - **Encryption is selective.** Secret payloads and files are encrypted; ordinary SQLite content and some structural metadata remain readable on the host. Configure TLS for remote access. [Security details](docs/SECURITY.md) explain key handling, recovery and limits.
 - **iPhone keeps an ordinary offline library.** Browse, search and queue edits offline. Secret notes, server history, public links and AI need a connection; attachment listings are cached, file bytes are not mirrored automatically.
 - **Release work remains.** Physical-device/background/share-sheet acceptance, full accessibility/IME and performance checks, Windows/Linux installer validation, signing and store distribution still need their respective environments. Daftak lists native mobile apps, collaboration and image support as roadmap work; Memory already has iPhone and image capture, while team collaboration is outside this comparison.
+
+## Workflows beyond the comparison
+
+Saved views and templates extend the original feature comparison. For example, create a view named **Garage work** with project *Garage Door*, type *Task* and status *Open*. It updates as tasks are added and completed. Save a **Weekly review** note with nested checklist entries as a template, then choose a destination project when creating the next review. Both workflows work without an AI provider.
+
+Desktop and browser evaluate views locally on their library host. iPhone can display cached lists/results when disconnected; creating or editing views and copying template trees requires the paired server. These are keyword/filter views, with cursor paging, rather than saved semantic rankings. [Workflow guide](docs/WORKFLOWS.md) includes CLI and MCP usage and the research references behind this batch.
+
+| Saved view | Note created from a template |
+|---|---|
+| ![Saved keyword view with current results](docs/screenshots/workflows/browser-views.png) | ![Template copy with its date expanded](docs/screenshots/workflows/browser-template.png) |
 
 ## Screenshots
 
