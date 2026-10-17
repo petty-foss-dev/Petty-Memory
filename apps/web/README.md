@@ -39,6 +39,7 @@ The same server also accepts other libraries' server sync with a `sync`-scoped t
 
 ## What it does
 
+- **AI chat:** cited questions and follow-ups, selected-branch edit proposals and natural-language topic organization across projects. Review the proposed hierarchy and carried branches, apply a selection and undo safely. Web Speech dictation fills the draft on supporting browsers, with system dictation guidance elsewhere; sending and applying are explicit. The host supplies the AI provider, and the conversation stays in this tab's memory. [Guide and limits](../../docs/AI_CHAT.md).
 - **Outline:** paged nested tree with inline creation (Enter to add the next line), Add child / Add below, indent and outdent (Tab / Shift+Tab), move up and down (Alt+↑ / Alt+↓), Move to… with a search picker, arrow-key navigation and expand/collapse.
 - **Editing:** plain title and text, no formatting syntax needed. Drafts survive background refreshes, and a failed save keeps them.
 - **Organize:** show an item as text, a heading or a section break; attention levels; review marks; pins.
