@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { EnveMemory } from '@enve-memory/core';
 
 const MAIN = fileURLToPath(new URL('../src/main.ts', import.meta.url));
 
@@ -23,6 +24,40 @@ const json = (home: string, args: string[]) => {
   assert.equal(result.code, 0, result.stderr);
   return JSON.parse(result.stdout);
 };
+
+test('saved chats, review, discovery, highlight import and reviewed actions work through the real CLI', () => {
+  const home = tempHome();
+  const source = json(home, ['note', 'Garden plan: build raised beds and buy seeds.']);
+  const file = join(home, 'chat.json');
+  writeFileSync(file, JSON.stringify({ title: 'Garden chat', mode: 'ask', messages: [{ role: 'user', content: 'What next?' }, { role: 'assistant', content: 'Buy seeds.' }] }));
+  const saved = json(home, ['conversations', 'save', file]);
+  assert.equal(json(home, ['conversations'])[0].id, saved.id);
+  assert.equal(json(home, ['conversations', 'show', saved.id]).messages[1].content, 'Buy seeds.');
+  assert.equal(cli(home, ['conversations', 'archive', saved.id]).code, 2);
+  json(home, ['conversations', 'archive', saved.id, '--yes']);
+  assert.deepEqual(json(home, ['conversations']), []);
+  assert.equal(json(home, ['review']).length, 1);
+  const reviewed = json(home, ['review', 'schedule', source.id, '--days', '7']);
+  assert.equal(reviewed.metadata.reviewSchedule.history[0].days, 7);
+  assert.deepEqual(json(home, ['review']), []);
+  assert.equal(json(home, ['insights', source.id]).itemId, source.id);
+
+  const exported = join(home, 'highlights.json');
+  writeFileSync(exported, JSON.stringify({ bookTitle: 'A fictional garden', annotations: [{ text: 'Plant after the frost.', position: 0.25 }] }));
+  assert.equal(json(home, ['import', 'highlights', exported, '--preview']).entries.length, 1);
+  assert.equal(json(home, ['import', 'highlights', exported]).created, 1);
+  assert.equal(json(home, ['import', 'highlights', exported]).skipped, 1);
+
+  const memory = EnveMemory.open({ home, actor: 'test' });
+  const proposal = memory.actions.prepare(memory.actions.scope({ rootId: source.id }), { summary: 'Tag the source.', operations: [{ kind: 'tag', itemId: source.id, tags: ['gardening'] }] });
+  memory.close();
+  writeFileSync(file, JSON.stringify(proposal));
+  const result = json(home, ['ai', 'actions-apply', file]);
+  assert.deepEqual(json(home, ['show', source.id]).tags, ['gardening']);
+  writeFileSync(file, JSON.stringify(result));
+  assert.equal(json(home, ['ai', 'actions-undo', file]).restored, 1);
+  assert.deepEqual(json(home, ['show', source.id]).tags, []);
+});
 
 test('capture, organize and find from the command line', () => {
   const home = tempHome();

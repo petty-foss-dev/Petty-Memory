@@ -73,9 +73,9 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Petty Memory connects to the library on your computer over your home network.
-        NSCameraUsageDescription: Scan the pairing QR code shown by Petty Memory on your computer.
-        NSMicrophoneUsageDescription: When you tap Dictate in AI chat, Petty Memory listens so it can type what you say. Petty Memory doesn't save audio.
-        NSSpeechRecognitionUsageDescription: Dictate in AI chat turns your speech into text in the message box. Where your iPhone can't do this on its own, Apple's speech service does.
+        NSCameraUsageDescription: Scan the pairing QR code shown by Petty Memory on your computer, or take a photo whose text you want to keep. Text is read on this iPhone.
+        NSMicrophoneUsageDescription: When you tap Dictate in AI chat or a new note, Petty Memory listens so it can type what you say. Petty Memory doesn't save audio.
+        NSSpeechRecognitionUsageDescription: Dictate in AI chat and new notes turns your speech into text you can check before sending or saving. Where your iPhone can't do this on its own, Apple's speech service does.
         CFBundleURLTypes:
           - CFBundleURLName: com.enve.memory
             CFBundleTypeRole: Viewer

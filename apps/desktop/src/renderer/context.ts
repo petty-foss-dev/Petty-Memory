@@ -16,6 +16,7 @@ export type Route =
   | { view: 'highlights' }
   | { view: 'project'; id: string; supersede?: string }
   | { view: 'tasks' }
+  | { view: 'review' }
   | { view: 'ask' }
   | { view: 'activity' }
   | { view: 'graph' }

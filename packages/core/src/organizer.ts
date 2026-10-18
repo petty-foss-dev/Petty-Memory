@@ -15,6 +15,7 @@ export interface OrganizationCandidate {
   parentId: string | null;
   position: number;
   descendantCount: number;
+  match?: 'keyword' | 'semantic' | 'both';
 }
 
 export interface OrganizationScope {
@@ -24,6 +25,7 @@ export interface OrganizationScope {
   affectedCount: number;
   destination: { id: string | null; title: string };
   items: OrganizationCandidate[];
+  additionalIds?: string[];
 }
 
 /** Group refs are the planner's own names; a null `parentRef` or `groupRef` means directly in the destination. */
@@ -45,6 +47,7 @@ export interface OrganizationProposal {
   groups: { id: string; title: string; parentId: string }[];
   assignments: { itemId: string; parentId: string }[];
   createdAt: string;
+  additionalIds?: string[];
 }
 
 export interface OrganizationReceipt {
@@ -75,7 +78,8 @@ const TEMPLATE_MEMBERS = `WITH RECURSIVE template_members(id) AS (
   UNION SELECT c.id FROM items c JOIN template_members m ON c.parent_id = m.id
 )`;
 const ORDINARY_NOTE = `i.type = 'note' AND i.archived_at IS NULL AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0
-  AND json_extract(i.metadata, '$.savedView') IS NULL AND i.id NOT IN (SELECT id FROM template_members)`;
+  AND json_extract(i.metadata, '$.savedView') IS NULL AND json_extract(i.metadata, '$.conversation') IS NULL
+  AND i.id NOT IN (SELECT id FROM template_members)`;
 
 interface CandidateRow {
   id: string;
@@ -95,13 +99,13 @@ export class OrganizerService {
     this.editor = editor;
   }
 
-  discover(query: string, destinationTitle: string): OrganizationScope {
+  discover(query: string, destinationTitle: string, additionalIds?: string[]): OrganizationScope {
     const topic = bounded(query, 'The topic', MAX_QUERY);
     const match = toFtsQuery(topic)?.replaceAll(' OR ', ' AND ');
     if (!match) throw invalid('Name the topic with at least one word or number, for example “gardening”.');
     const title = bounded(destinationTitle, 'The destination name', MAX_TITLE);
     const destination = this.destination(title);
-    const matched = this.ctx
+    const keyword = this.ctx
       .all<{ id: string }>(
         `${TEMPLATE_MEMBERS} SELECT i.id FROM items i
          WHERE i.seq IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?) AND ${ORDINARY_NOTE} ORDER BY i.seq`,
@@ -109,6 +113,12 @@ export class OrganizerService {
       )
       .map((row) => row.id)
       .filter((id) => id !== destination?.id);
+    const proposed = relatedIds(additionalIds);
+    const additional = proposed.length ? this.ctx.all<{ id: string }>(
+      `${TEMPLATE_MEMBERS} SELECT i.id FROM items i WHERE ${ORDINARY_NOTE} AND i.id IN (SELECT value FROM json_each(?)) ORDER BY i.seq`,
+      JSON.stringify(proposed),
+    ).map((row) => row.id).filter((id) => id !== destination?.id && !keyword.includes(id)) : [];
+    const matched = [...keyword, ...additional];
     if (matched.length > MAX_MATCHES) {
       throw invalid(`${matched.length} notes match “${topic}”, more than the ${MAX_MATCHES} that can be organized at once. Use a narrower topic or more specific words.`);
     }
@@ -132,7 +142,10 @@ export class OrganizerService {
         throw invalid(`“${row.title || excerpt(row.body, 60)}” holds a secret note, which organizing never reads or moves. Move the secret note out of it first, or use a narrower topic.`);
       }
       affectedCount += 1 + count;
-      return { id, title: row.title, body: excerpt(row.body, EXCERPT), parentId: row.parent_id, position: row.sort_order, descendantCount: count };
+      return {
+        id, title: row.title, body: excerpt(row.body, EXCERPT), parentId: row.parent_id, position: row.sort_order, descendantCount: count,
+        match: keyword.includes(id) ? 'keyword' : 'semantic',
+      };
     });
     if (affectedCount > MAX_AFFECTED) {
       throw invalid(`Organizing “${topic}” would move ${affectedCount} items, counting what is nested under the matching notes; at most ${MAX_AFFECTED} can move at once. Use a narrower topic.`);
@@ -147,6 +160,7 @@ export class OrganizerService {
     return {
       query: topic, baseHash, matchedCount: matched.length, affectedCount,
       destination: destination ?? { id: null, title }, items,
+      ...(additional.length ? { additionalIds: additional } : {}),
     };
   }
 
@@ -156,7 +170,7 @@ export class OrganizerService {
       || !isObject(scope.destination) || typeof scope.destination.title !== 'string') {
       throw invalid('That isn’t an organization scope. Search the library again.');
     }
-    const live = this.discover(scope.query, scope.destination.title);
+    const live = this.discover(scope.query, scope.destination.title, scope.additionalIds);
     if (live.baseHash !== scope.baseHash) throw stale();
     if (live.items.length === 0) throw invalid(`No notes match “${live.query}”, so there is nothing to organize.`);
     const { summary, groups, assignments } = validPlan(plan, live.items);
@@ -175,6 +189,7 @@ export class OrganizerService {
       groups: groups.map((group) => ({ id: ids.get(group.ref)!, title: group.title, parentId: parent(group.parentRef) })),
       assignments: assignments.map((assignment) => ({ itemId: assignment.itemId, parentId: parent(assignment.groupRef) })),
       createdAt: this.ctx.now(),
+      ...(live.additionalIds?.length ? { additionalIds: live.additionalIds } : {}),
     };
   }
 
@@ -190,7 +205,7 @@ export class OrganizerService {
         throw new MemoryError('conflict', 'This organization was undone. Ask for a new proposal to organize these notes again.');
       }
       if (!previous) {
-        const live = this.discover(checked.query, checked.destination.title);
+        const live = this.discover(checked.query, checked.destination.title, checked.additionalIds);
         const ids = (list: string[]) => JSON.stringify([...list].sort());
         const liveIds = ids(live.items.map((item) => item.id));
         if (live.baseHash !== checked.baseHash || live.destination.id !== (checked.destination.create ? null : checked.destination.id)
@@ -333,7 +348,14 @@ function validProposal(raw: unknown): OrganizationProposal {
     ...(raw as unknown as OrganizationProposal), id,
     destination: { id: rootId, title: bounded(destination.title, 'The destination name', MAX_TITLE), create: destination.create },
     groups, assignments, items,
+    ...(raw.additionalIds === undefined ? {} : { additionalIds: relatedIds(raw.additionalIds) }),
   };
+}
+
+function relatedIds(raw: unknown): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > 50) throw invalid('Organizing can include at most 50 suggested related notes.');
+  return [...new Set(raw.map((id) => clientId(id, 'Suggested note id')))];
 }
 
 function validSelection(includeIds: unknown, all: string[]): Set<string> {

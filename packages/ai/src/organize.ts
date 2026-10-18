@@ -118,8 +118,19 @@ export async function proposeOrganization(memory: EnveMemory, provider: AiProvid
   const system = clean(intent.system, MAX_SYSTEM);
   if (intent.ready !== true || !toFtsQuery(topic) || !destination || !system) return reply(clean(intent.question, 500) || ASK_AGAIN);
 
-  const scope = memory.organizer.discover(topic, destination);
-  if (scope.items.length === 0) return reply(`No notes match “${scope.query}”, so there is nothing to organize. Try other words for the topic.`);
+  let scope = memory.organizer.discover(topic, destination);
+  let keywordOnly = false;
+  const remaining = Math.min(50, 150 - scope.matchedCount);
+  if (remaining > 0) {
+    try {
+      const related = await memory.search.hybrid(topic, { type: 'note', secret: false }, 50);
+      const suggestions = related.filter((hit) => hit.match === 'semantic' || hit.match === 'both').map((hit) => hit.id).slice(0, remaining);
+      if (suggestions.length) scope = memory.organizer.discover(topic, destination, suggestions);
+    } catch {
+      keywordOnly = true;
+    }
+  }
+  if (scope.items.length === 0) return reply(`No notes match “${scope.query}” by keyword.${keywordOnly ? ' Related suggestions were unavailable.' : ''} Try other words for the topic.`);
 
   const grouping = parseJsonReply<Grouping>(await provider.complete({
     system: GROUP_SYSTEM,
@@ -134,7 +145,9 @@ export async function proposeOrganization(memory: EnveMemory, provider: AiProvid
       '</notes>',
     ].join('\n'),
   }));
-  return { kind: 'organization', proposal: memory.organizer.prepare(scope, toPlan(scope, grouping)) };
+  const plan = toPlan(scope, grouping);
+  if (keywordOnly) plan.summary = `${plan.summary.slice(0, 850)} Related suggestions were unavailable; this proposal includes keyword matches only.`.trim();
+  return { kind: 'organization', proposal: memory.organizer.prepare(scope, plan) };
 }
 
 /** Titles first, then as much excerpt as each note's share of the budget allows. */

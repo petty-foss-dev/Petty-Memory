@@ -11,12 +11,14 @@ struct SettingsView: View {
 
     @State private var confirmUnpair = false
     @State private var checking = false
+    @AppStorage(GettingStartedCard.dismissedKey) private var gettingStartedDismissed = false
 
     var body: some View {
         HearthScreen(title: "Settings") {
             server
             offlineCopy
             outboxSection
+            library
             privacy
             appearance
             about
@@ -171,7 +173,30 @@ struct SettingsView: View {
             return "Saving your library for offline use. Items saved so far already open offline; browsing, lists and search follow once it's complete."
         }
         let updated = summary.refreshedAt.map { "Updated \($0.formatted(.relative(presentation: .named)))" } ?? "Waiting for the first full copy"
-        return "\(updated). Browse, open and search it offline; secret notes and AI results are never saved."
+        return "\(updated). Browse, open and search it offline. Secret notes and unsaved AI conversations aren't cached; chats you explicitly save are ordinary library notes."
+    }
+
+    private var library: some View {
+        VStack(alignment: .leading, spacing: HearthSpacing.sm) {
+            Overline("Import and guides")
+            HearthCard(padding: HearthSpacing.md) {
+                VStack(alignment: .leading, spacing: HearthSpacing.md) {
+                    Button { router.open(.enveImport) } label: {
+                        settingsRow("Import Enve highlights", detail: "Book highlights and notes from an Enve export file", symbol: "books.vertical")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("SettingsEnveImport")
+                    HearthDivider()
+                    Toggle(isOn: Binding(get: { !gettingStartedDismissed }, set: { gettingStartedDismissed = !$0 })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Getting started on Home").font(HearthFont.subheadline)
+                            Text("A short checklist of capture, review, import and optional AI").font(HearthFont.caption).foregroundStyle(hearth.textSecondary)
+                        }
+                    }
+                    .accessibilityIdentifier("SettingsGettingStarted")
+                }
+            }
+        }
     }
 
     private var privacy: some View {

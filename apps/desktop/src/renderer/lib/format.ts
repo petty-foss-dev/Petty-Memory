@@ -2,6 +2,16 @@ import type { Intent, ItemType } from '@enve-memory/core';
 
 export { displayTitle, firstLine } from '../../shared/text.ts';
 
+export function providedSourceLink(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:', 'enve:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function siteOf(url: string | null | undefined): string {
   if (!url) return '';
   try {

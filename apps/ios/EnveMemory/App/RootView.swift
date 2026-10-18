@@ -123,6 +123,10 @@ struct MainView: View {
             case .savedView(let id): SavedViewResultsView(viewID: id)
             case .templates: TemplatesView()
             case .aiChat: AIChatView()
+            case .savedChat(let id): AIChatView(savedConversationID: id)
+            case .conversations: SavedChatsView()
+            case .review: DailyReviewView()
+            case .enveImport: EnveImportView()
             }
         }
         .id(route)

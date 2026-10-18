@@ -1,9 +1,12 @@
 import { can, connect, currentClient, disconnect, enc, get, onSessionLost, post, query } from './api.js';
 import { clear, confirmDialog, empty, errorBox, field, h, loading, when } from './dom.js';
+import { createCaptureView } from './capture.js';
 import { createChatView } from './chat.js';
 import { createDetail } from './detail.js';
 import { clearEditHistory, isEditable, redoEdit, undoEdit } from './edits.js';
 import { createOutline } from './outline.js';
+import { createReviewView } from './review.js';
+import { createSetupChecklist } from './setup.js';
 import { createSharesView } from './shares.js';
 import { createVaultView } from './vault.js';
 import { createTemplatesView, createViewsView } from './workflows.js';
@@ -16,6 +19,8 @@ const MAX_PAGE = 200;
 const VIEWS = [
   ['outline', 'Outline'],
   ['search', 'Search'],
+  ['capture', 'Capture & import'],
+  ['review', 'Review'],
   ['chat', 'AI chat'],
   ['highlights', 'Highlights'],
   ['views', 'Saved views'],
@@ -141,6 +146,7 @@ function showShell(root) {
     async changed({ outline: refreshOutline = true, detail: refreshDetail = true } = {}) {
       await Promise.all([
         refreshOutline ? outline.refresh() : null,
+        refreshOutline && view === 'outline' ? setup.refresh() : null,
         refreshDetail ? detail.refresh() : null,
         view !== 'outline' ? views[view].refresh({ poll: true }) : null,
       ]);
@@ -148,11 +154,14 @@ function showShell(root) {
   };
 
   const outline = createOutline(ctx);
+  const setup = createSetupChecklist({ open: (key) => show(key) });
   const detail = createDetail(ctx);
   detail.el.tabIndex = -1;
   const views = {
-    outline: { el: outline.el, refresh: () => outline.refresh() },
+    outline: { el: h('div', null, setup.el, outline.el), refresh: () => outline.refresh() },
     search: createSearchView(ctx),
+    capture: createCaptureView(ctx),
+    review: createReviewView(ctx),
     chat: createChatView(ctx),
     highlights: createHighlightsView(ctx),
     views: createViewsView(ctx),
@@ -190,7 +199,8 @@ function showShell(root) {
       else b.removeAttribute('aria-current');
     });
     clear(main, views[key].el);
-    if (key !== 'outline') views[key].refresh();
+    if (key === 'outline') setup.refresh();
+    else views[key].refresh();
   }
 
   clear(root, shell);
@@ -264,6 +274,7 @@ function showShell(root) {
   start();
   stopPolling = () => {
     views.chat.dispose();
+    views.capture.dispose();
     lifetime.abort();
     active?.abort();
     clearTimeout(toastTimer);

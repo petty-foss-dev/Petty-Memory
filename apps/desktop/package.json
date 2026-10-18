@@ -25,6 +25,8 @@
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "tesseract.js": "^7.0.0",
     "@huggingface/transformers": "^4.3.0"
   },
   "devDependencies": {

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Saved AI chats, opt in per conversation: save, search, reopen, continue, update and archive. Saved chats are ordinary plaintext notes (at most 100 messages and 200,000 characters) that sync and export. Unsaved chats are still not stored. Any cited answer can be saved as a note with its sources as item references.
+- Suggested actions in AI chat: tasks, tags, reminders and a brief from a branch or keyword topic. Operations are previewed individually and selected ones apply atomically. Stale proposals are refused, and Undo is refused over newer work.
+- Topic organization adds up to 50 notes found by meaning, marked Suggested, to the complete keyword matches. It falls back to keyword matches only when semantic search is unavailable.
+- Note dictation when capturing on desktop, browser and iPhone, with system dictation guidance where in-app speech is unavailable. Image text extraction with an editable draft before saving, keeping the original image: bundled English Tesseract on the library host, and Vision on iPhone.
+- Daily review: a local queue of notes, links, files and images, with Tomorrow, next week, next month or custom intervals and per-item review history.
+- Suggested connections without AI: unlinked mentions, related notes and possible duplicates. Duplicate merges show a preview, keep the merged note archived with its files, refuse stale previews and support Undo.
+- Enve Book Player highlight, annotation and bookmark import from JSON or Markdown exports, with a preview and a project choice. Repeat imports are skipped. A version 1 interchange format can carry optional safe source links.
+- First-run checklists on desktop, browser and iPhone. They never change the library or turn on AI.
+- CLI commands and HTTP API routes for saved chats, review, insights, merges, actions, OCR and Enve imports. See [docs/POWER_FEATURES.md](docs/POWER_FEATURES.md).
 - AI chat on desktop, browser and iPhone: cited follow-ups, selected-branch edit proposals and natural-language library organization with reviewed placements and guarded undo.
 - Voice-to-draft input through native iPhone speech recognition and the Web Speech API where available, with system dictation guidance elsewhere. Sending and applying remain explicit.
 - Saved views: reusable keyword searches with combined project, type, tag, task-status, shelf and attention filters, dynamic results and cursor paging.

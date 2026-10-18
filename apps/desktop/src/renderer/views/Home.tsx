@@ -5,6 +5,7 @@ import { useApp } from '../context.ts';
 import { Icon } from '../ui.tsx';
 import { CaptureBar } from './CaptureBar.tsx';
 import { ItemRow } from './ItemRow.tsx';
+import { SetupChecklist } from './SetupChecklist.tsx';
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -34,7 +35,7 @@ export function Home({ capture }: { capture: CaptureRequest }) {
       <CaptureBar focus={capture} />
 
       {isEmpty && (
-        <section className="welcome" aria-label="Getting started">
+        <section className="welcome" aria-label="Welcome">
           <h2>Save a link, jot a note, or connect Claude Code.</h2>
           <p>
             Petty Memory is one library on this computer that you and your AI tools share. What you save here, Claude Code,
@@ -60,6 +61,7 @@ export function Home({ capture }: { capture: CaptureRequest }) {
           </div>
         </section>
       )}
+      {isEmpty && <SetupChecklist />}
 
       {!isEmpty && (
         <div className="home-grid">
@@ -74,6 +76,7 @@ export function Home({ capture }: { capture: CaptureRequest }) {
           </section>
 
           <div className="home-side">
+            <SetupChecklist />
             {nextReminders.length > 0 && (
               <section className="panel" aria-labelledby="reminders-heading">
                 <div className="panel-header">

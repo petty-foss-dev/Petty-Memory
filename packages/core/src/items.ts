@@ -320,6 +320,7 @@ export class ItemService {
         `SELECT id FROM items
          WHERE created_at >= ? AND archived_at IS NULL AND type IN ('note', 'bookmark', 'file', 'image')
            AND json_extract(metadata, '$.ai') IS NULL AND json_extract(metadata, '$.secret') IS NULL
+           AND json_extract(metadata, '$.aiAction') IS NULL AND json_extract(metadata, '$.conversation') IS NULL
            AND coalesce(json_extract(metadata, '$.ingest.status'), 'done') != 'pending'
          ORDER BY seq LIMIT ?`,
         since, limit,

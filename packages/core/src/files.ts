@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { type AttachmentRow, blobPath, toAttachment, writeBlob } from './blobs.ts';
 import { type Context, newId, required } from './context.ts';
@@ -102,5 +102,17 @@ export class FileService {
     const { attachment, path } = this.primary(itemId);
     if (!existsSync(path)) throw notFound(`The contents of ${attachment.filename} haven't arrived on this device yet.`);
     return { attachment, data: readFileSync(path) };
+  }
+
+  readAttachment(id: string, { maxBytes }: { maxBytes?: number } = {}): { itemId: string; attachment: Attachment; data: Buffer } {
+    if (typeof id !== 'string' || !id) throw invalid('Choose an image attachment.');
+    const attachment = this.ctx.get<AttachmentRow>(`SELECT * FROM attachments WHERE id = ?`, id);
+    if (!attachment) throw notFound('That attachment is not in this library.');
+    const item = this.items.row(attachment.item_id);
+    if (item.archived_at !== null || (JSON.parse(item.metadata) as ItemMetadata).secret) throw invalid('Choose an attachment on an active ordinary item.');
+    const path = blobPath(this.ctx, attachment.sha256);
+    if (!existsSync(path)) throw notFound('That attachment has not arrived on this device yet.');
+    if (maxBytes !== undefined && statSync(path).size > maxBytes) throw invalid(`Choose an attachment smaller than ${Math.floor(maxBytes / 1024 / 1024)} MB.`);
+    return { itemId: item.id, attachment: toAttachment(attachment), data: readFileSync(path) };
   }
 }

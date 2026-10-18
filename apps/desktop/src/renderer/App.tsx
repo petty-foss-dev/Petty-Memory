@@ -22,6 +22,7 @@ import { Settings } from './views/Settings.tsx';
 import { Tasks } from './views/Tasks.tsx';
 
 const Ask = lazy(() => import('./views/Ask.tsx').then((module) => ({ default: module.Ask })));
+const Review = lazy(() => import('./views/Review.tsx').then((module) => ({ default: module.Review })));
 const SavedViews = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.SavedViews })));
 const Templates = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.Templates })));
 
@@ -185,6 +186,7 @@ export function App() {
             {nav({ view: 'home' }, 'home', 'Home')}
             {nav({ view: 'inbox' }, 'inbox', 'Inbox', info.data?.inboxCount)}
             {nav({ view: 'tasks' }, 'tasks', 'Tasks')}
+            {nav({ view: 'review' }, 'review', 'Review')}
             {nav({ view: 'ask' }, 'ask', 'AI chat')}
             <div className="nav-heading">
               <span>Projects</span>
@@ -225,6 +227,7 @@ export function App() {
           {route.view === 'reminders' && <RemindersView />}
           <Suspense fallback={<div className="page" role="status">Loading…</div>}>
             {route.view === 'ask' && <Ask />}
+            {route.view === 'review' && <Review />}
             {route.view === 'views' && <SavedViews id={route.id} />}
             {route.view === 'templates' && <Templates />}
           </Suspense>

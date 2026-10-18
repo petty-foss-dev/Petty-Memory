@@ -10,8 +10,9 @@
 </p>
 
 <p align="center">
-  Built-in AI chat answers questions, edits notes and organizes topics across your library. Review changes before applying them, with selective acceptance and undo.<br>
-  <a href="docs/AI_CHAT.md">AI chat, organization and dictation guide</a>
+  Built-in AI chat answers questions, edits notes, suggests tasks and organizes topics across your library. Review changes before applying them, with selective acceptance and undo.<br>
+  Daily review, connection and duplicate suggestions, image text and Enve book highlights work without AI.<br>
+  <a href="docs/AI_CHAT.md">AI chat guide</a> · <a href="docs/POWER_FEATURES.md">Everyday workflows</a>
 </p>
 
 <p align="center">
@@ -43,7 +44,9 @@
 - **Shelves and reminders.** Pinned, Read, Watch, Buy, Revisit, "unopened for a month". Reminders take plain words ("tomorrow", "friday") and notify on the desktop, the phone or in the browser.
 - **Saved views.** Name a recurring search such as "Open Garage tasks" or "Security articles to read". Combine keywords, project, type, tag, task status and attention filters; the results follow the current library. Available on desktop, web, iPhone, CLI and MCP.
 - **Reusable templates.** Turn an ordinary note/checklist tree into an editable template, then create fresh copies for meeting notes, research briefs or recurring checklists. Copies keep nesting and references, reset completed boxes and expand `{{date}}` and `{{project}}`. [Examples and limits](docs/WORKFLOWS.md).
-- **Chat with your library.** Ask questions with source links, discuss follow-ups, or say “organize all notes about gardening into a PARA system.” Review the proposed hierarchy and note placements, keep the branches you want, apply them together and undo safely. Dictate into the draft on iPhone and supporting browsers, with system dictation available on desktop. [Chat and voice guide](docs/AI_CHAT.md).
+- **Chat with your library.** Ask questions with source links, discuss follow-ups, or say “organize all notes about gardening into a PARA system.” Review the proposed hierarchy and note placements, keep the branches you want, apply them together and undo safely. Ask for tasks, tags, reminders or a brief from a branch or topic, and review each before applying. Chats are kept only when you save them. Dictate into the draft on iPhone and supporting browsers, with system dictation available on desktop. [Chat and voice guide](docs/AI_CHAT.md).
+- **Review and connect what you know.** A daily review queue brings notes back on a schedule you choose. Find connections suggests unlinked mentions, related notes and possible duplicates, and duplicates can be merged with a preview and undo. Neither needs AI. [Everyday workflows](docs/POWER_FEATURES.md).
+- **Text from images, highlights from books.** Extract text from an image locally and review it before saving, with the image kept. Import Enve Book Player highlights and annotations; importing again skips what you already have.
 - **Optional AI, bring your own.** Ollama, OpenAI, Anthropic, Gemini, OpenRouter or any OpenAI-compatible server for summaries, tag and project suggestions (or automatic filing), and cited answers from your own library. Everything else works with AI off.
 - **Automations.** For example, "links from github.com → #code, file into Development".
 - **Sync between your computers** through a folder you already sync (iCloud Drive, Dropbox, Syncthing), with optional passphrase encryption, or through a Petty Memory server you run yourself. Server sync watches local changes and long-polls for incoming work; folder sync runs periodically. Conflicting text is retained for review.
@@ -61,9 +64,9 @@ This work began as a public challenge to build an open-source alternative to [Da
 | Automatic organization | Opt-in background organization, selected-branch proposals and natural-language topic organization across the library, with review, selective acceptance and guarded undo. |
 | Attention levels | Raise or lower an item's visual emphasis without changing its content or filing. |
 | Checklists | Nested completion and progress, completed-item visibility and quick reset. |
-| Connections | Create and remove relations between items; browse related items, backlinks and the desktop graph. |
+| Connections | Create and remove relations between items; browse related items, backlinks and the desktop graph. Suggested connections are offered without AI. |
 | Item history | Automatic item/subtree snapshots, comparisons and restore as a new change; historical attachment bytes are retained. |
-| AI assistance | Session chat, dictated prompts, cited answers, scoped editing and topic-wide grouping with selective acceptance and guarded undo. Bring your own provider or keep AI off. |
+| AI assistance | Chat with optional saving, dictated prompts, cited answers, scoped editing, suggested actions and topic-wide grouping with selective acceptance and guarded undo. Bring your own provider or keep AI off. |
 | Inline references | Insert references to stable item identities from the editor and navigate to the referenced item. |
 | Hybrid encryption / secrets | Optional encrypted notes, nested secret branches and encrypted attachments, with locking, recovery kits and scoped device access. See the encryption differences below. |
 | Selective sharing | Read-only public subtree links with excluded branches, expiry and revocation. Secrets are excluded. |
@@ -80,12 +83,25 @@ A few differences matter when choosing how to run it:
 
 - **You host the library.** Use the desktop app or the [self-hosted browser/server setup](docs/SELF_HOSTING.md). A managed account service has not been deployed, and the local product needs no account.
 - **Encryption is selective.** Secret payloads and files are encrypted; ordinary SQLite content and some structural metadata remain readable on the host. Configure TLS for remote access. [Security details](docs/SECURITY.md) explain key handling, recovery and limits.
-- **iPhone keeps an ordinary offline library.** Browse, search and queue edits offline. Secret notes, server history, public links and AI need a connection; attachment listings are cached, file bytes are not mirrored automatically.
+- **iPhone keeps an ordinary offline library.** Browse, search and queue edits offline. Secret notes, server history, public links, AI, saved-chat resuming, daily review, connection suggestions and imports need a connection. Saved transcripts remain readable as ordinary cached notes; attachment listings are cached, file bytes are not mirrored automatically.
 - **Release work remains.** Physical-device/background/share-sheet acceptance, full accessibility/IME and performance checks, Windows/Linux installer validation, signing and store distribution still need their respective environments. Daftak lists native mobile apps, collaboration and image support as roadmap work; Memory already has iPhone and image capture, while team collaboration is outside this comparison.
 
 ## Workflows beyond the comparison
 
-Saved views and templates extend the original feature comparison. For example, create a view named **Garage work** with project *Garage Door*, type *Task* and status *Open*. It updates as tasks are added and completed. Save a **Weekly review** note with nested checklist entries as a template, then choose a destination project when creating the next review. Both workflows work without an AI provider.
+The comparison above covers Daftak's 17 public feature groups. These additions go further, and most work without an AI provider:
+
+- **Saved chats.** Opt in per conversation. A saved chat is an ordinary plaintext note that syncs, exports and searches like any other. Unsaved chats are not stored.
+- **Suggested actions.** Tasks, tags, reminders and a brief from a branch or topic. Each operation is previewed. Selected operations apply together, stale proposals are refused, and Undo stops before overwriting newer work.
+- **Broader topic organization.** Keyword discovery stays complete. Up to 50 related-in-meaning notes are added and marked Suggested, with keyword-only results when semantic search is unavailable.
+- **Voice and image capture.** Dictate a note, or extract text from an image and correct it before saving. The original image is kept. Image text is read locally: by Tesseract (English) on the library host for desktop and browser, and by Vision on iPhone.
+- **Daily review.** A local schedule and review history on each item. Choose when to see each item again. No background service or extra notifications.
+- **Connections and duplicate cleanup.** Unlinked mentions, related notes and possible duplicates are found without AI. Merges are previewed, keep the original note archived with its files, and can be undone.
+- **Enve book highlights.** Preview and import highlights, annotations and bookmarks from Enve Book Player's JSON or Markdown export. Importing again doesn't create duplicates. Enve's export has no book identifiers or source links, so there is no live sync or deep link back into a book.
+- **Getting started.** A first-run checklist on desktop, browser and iPhone. AI and accounts stay optional.
+
+[Everyday workflows](docs/POWER_FEATURES.md) explains each workflow, its limits and its privacy boundaries. [Verification](docs/POWER_VERIFICATION.md) records the checks for this batch; physical-device acceptance for microphone, camera and Vision text recognition is still outstanding.
+
+Saved views and templates came first. For example, create a view named **Garage work** with project *Garage Door*, type *Task* and status *Open*. It updates as tasks are added and completed. Save a **Weekly review** note with nested checklist entries as a template, then choose a destination project when creating the next review. Both workflows work without an AI provider.
 
 Desktop and browser evaluate views locally on their library host. iPhone can display cached lists/results when disconnected; creating or editing views and copying template trees requires the paired server. These are keyword/filter views, with cursor paging, rather than saved semantic rankings. [Workflow guide](docs/WORKFLOWS.md) includes CLI and MCP usage and the research references behind this batch.
 
@@ -101,9 +117,15 @@ In **AI chat → Organize library** (Organize on iPhone), type or dictate:
 
 > Organize all notes about gardening into a PARA system.
 
-Memory finds matching notes across projects and proposes a destination, headings and placements. Review the tree, untick anything that does not belong, then move the selection together. Note contents, files, identities and project filing stay intact. Undo protects newer work. Questions and follow-ups have source links; Change notes proposes edits to a branch you choose. [The guide](docs/AI_CHAT.md) explains keyword matching, size limits, sessions and provider privacy.
+Memory finds matching notes across projects and proposes a destination, headings and placements. Review the tree, untick anything that does not belong, then move the selection together. Note contents, files, identities and project filing stay intact. Undo protects newer work. Questions and follow-ups have source links; Change notes proposes edits to a branch you choose. [The guide](docs/AI_CHAT.md) explains keyword matching and suggestions, size limits, saving chats and provider privacy.
 
 Dictation fills the draft and never sends or applies automatically. iPhone uses native speech recognition; supporting browsers use Web Speech. Desktop offers system dictation guidance when in-app speech is unavailable. Live microphone acceptance still needs a physical-device run.
+
+Choose **Suggest actions** (Actions on iPhone) for tasks, tags, reminders or a brief. Each operation is reviewed before applying; the examples below use fictional notes.
+
+| Desktop action review | iPhone action review |
+|---|---|
+| ![Select tasks, tags, reminders and a brief before applying](docs/screenshots/power/desktop-actions.png) | <img src="docs/screenshots/power/iphone-actions.png" width="260" alt="iPhone action review with the proposed brief excluded"> |
 
 | Desktop organization review | iPhone organization review |
 |---|---|
@@ -239,7 +261,7 @@ Override it with `--home DIR` or `ENVE_MEMORY_HOME`.
 
 ## Docs
 
-[Product](docs/PRODUCT.md) · [Architecture](docs/ARCHITECTURE.md) · [Data model](docs/DATA_MODEL.md) · [MCP](docs/MCP.md) · [HTTP API](docs/API.md) · [Security](docs/SECURITY.md) · [Sync](docs/SYNC.md) · [Roadmap](docs/ROADMAP.md) · [Parity plan](docs/DAFTAK_PARITY_PLAN.md) · [Verification](docs/PARITY_VERIFICATION.md) · [Self-hosting](docs/SELF_HOSTING.md) · [Contributing](CONTRIBUTING.md)
+[Product](docs/PRODUCT.md) · [AI chat](docs/AI_CHAT.md) · [Everyday workflows](docs/POWER_FEATURES.md) · [Saved views and templates](docs/WORKFLOWS.md) · [Architecture](docs/ARCHITECTURE.md) · [Data model](docs/DATA_MODEL.md) · [MCP](docs/MCP.md) · [HTTP API](docs/API.md) · [Security](docs/SECURITY.md) · [Sync](docs/SYNC.md) · [Roadmap](docs/ROADMAP.md) · [Parity plan](docs/DAFTAK_PARITY_PLAN.md) · [Verification](docs/PARITY_VERIFICATION.md) · [Self-hosting](docs/SELF_HOSTING.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 

@@ -3,3 +3,4 @@ export { type Bookmark, type BookmarkImportOptions, importBookmarks, parseBookma
 export { type MarkdownNote, importMarkdownFolder, parseFrontMatter, parseMarkdownNote } from './markdown.ts';
 export { importCsv, parseCsv } from './csv.ts';
 export { importEnveExport } from './enve.ts';
+export { ENVE_HIGHLIGHT_MAX_BYTES, previewEnveHighlights, importEnveHighlights, type EnveHighlight, type EnveHighlightPreview } from './highlights.ts';

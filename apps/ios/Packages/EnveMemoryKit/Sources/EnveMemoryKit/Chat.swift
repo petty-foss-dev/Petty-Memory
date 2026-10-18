@@ -9,7 +9,7 @@ public struct AIStatus: Decodable, Hashable, Sendable {
 }
 
 public enum ChatMode: String, Codable, Hashable, Sendable {
-    case ask, edit, organize
+    case ask, edit, organize, actions
 }
 
 public struct ChatMessage: Codable, Hashable, Sendable {
@@ -35,13 +35,15 @@ public struct ChatRequest: Encodable, Hashable, Sendable {
     public let messages: [ChatMessage]
     public let project: String?
     public let rootId: String?
+    /// A keyword topic; the actions mode takes exactly one of `rootId` or `query`.
+    public let query: String?
     /// Earlier messages left out to fit; not encoded.
     public let omitted: Int
 
-    private enum CodingKeys: String, CodingKey { case mode, messages, project, rootId }
+    private enum CodingKeys: String, CodingKey { case mode, messages, project, rootId, query }
 
     /// Whole exchanges drop from the front so roles still alternate and the new message stays whole.
-    public init(mode: ChatMode, history: [ChatMessage], message: String, project: String? = nil, rootId: String? = nil) {
+    public init(mode: ChatMode, history: [ChatMessage], message: String, project: String? = nil, rootId: String? = nil, query: String? = nil) {
         var earlier = history.map { ChatMessage(role: $0.role, content: Self.clipped($0.content)) }
         let original = earlier.count
         if earlier.first?.role == .assistant { earlier.removeFirst() }
@@ -55,6 +57,7 @@ public struct ChatRequest: Encodable, Hashable, Sendable {
         messages = earlier + [final]
         self.project = project
         self.rootId = rootId
+        self.query = query
         omitted = original - earlier.count
     }
 
@@ -85,6 +88,27 @@ public struct CitedAnswer: Decodable, Hashable, Sendable {
 
     public let answer: String
     public let sources: [Source]
+
+    public init(answer: String, sources: [Source]) {
+        self.answer = answer
+        self.sources = sources
+    }
+
+    /// The answer as ordinary note text: each `[n]` becomes a stable reference to its source, and every source is listed below.
+    public var noteBody: String {
+        let byNumber = Dictionary(sources.map { ($0.n, $0) }, uniquingKeysWith: { first, _ in first })
+        let text = answer.replacing(/\[(\d+)\]/) { match -> String in
+            guard let n = Int(match.output.1), let source = byNumber[n] else { return String(match.output.0) }
+            return InlineReference.token(id: source.id, label: source.label)
+        }
+        guard !sources.isEmpty else { return text }
+        let list = sources.map { "- " + InlineReference.token(id: $0.id, label: $0.label) }
+        return text + "\n\nSources\n" + list.joined(separator: "\n")
+    }
+}
+
+extension CitedAnswer.Source {
+    var label: String { title.isEmpty ? (url ?? "Source \(n)") : title }
 }
 
 /// Proposals change nothing until reviewed and applied.
@@ -92,6 +116,7 @@ public enum ChatResponse: Decodable, Hashable, Sendable {
     case answer(CitedAnswer)
     case proposal(EditProposal)
     case organization(OrganizationProposal)
+    case actions(ActionProposal)
 
     private enum CodingKeys: String, CodingKey { case kind, answer, proposal }
 
@@ -101,6 +126,7 @@ public enum ChatResponse: Decodable, Hashable, Sendable {
         case "answer": self = .answer(try c.decode(CitedAnswer.self, forKey: .answer))
         case "proposal": self = .proposal(try c.decode(EditProposal.self, forKey: .proposal))
         case "organization": self = .organization(try c.decode(OrganizationProposal.self, forKey: .proposal))
+        case "actions": self = .actions(try c.decode(ActionProposal.self, forKey: .proposal))
         case let kind: throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "Unknown chat reply “\(kind)”.")
         }
     }

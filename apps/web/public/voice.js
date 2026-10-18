@@ -1,6 +1,7 @@
 // Mirrors the desktop renderer/lib/voice.ts.
 
 export const DICTATION_NOTE = 'Your browser or system speech service turns speech into text and may send the audio off this device. Dictation only fills in the message; nothing is sent until you press Send.';
+export const NOTE_DICTATION_NOTE = 'Your browser or system speech service turns speech into text and may send the audio off this device. Dictation only fills in the note; nothing is saved until you press Save.';
 
 export function speechRecognizer(scope) {
   return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null;
@@ -114,9 +115,9 @@ export function platformOf(nav) {
   return 'other';
 }
 
-export function systemDictationHelp(platform) {
-  if (platform === 'darwin') return 'Use macOS Dictation instead: click in the message and press your Dictation shortcut (System Settings → Keyboard → Dictation).';
-  if (platform === 'win32') return 'Use Windows voice typing instead: click in the message and press Windows key + H.';
-  if (platform === 'linux') return 'Use your desktop’s dictation or voice typing tool instead, with the message box focused.';
-  return 'Use your device’s own dictation instead, such as the microphone key on its keyboard, with the message box focused.';
+export function systemDictationHelp(platform, field = 'message') {
+  if (platform === 'darwin') return `Use macOS Dictation instead: click in the ${field} and press your Dictation shortcut (System Settings → Keyboard → Dictation).`;
+  if (platform === 'win32') return `Use Windows voice typing instead: click in the ${field} and press Windows key + H.`;
+  if (platform === 'linux') return `Use your desktop’s dictation or voice typing tool instead, with the ${field} box focused.`;
+  return `Use your device’s own dictation instead, such as the microphone key on its keyboard, with the ${field} box focused.`;
 }

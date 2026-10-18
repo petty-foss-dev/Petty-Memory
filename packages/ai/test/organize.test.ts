@@ -127,7 +127,7 @@ test('nothing to organize, too much to organize and a library changing mid-plan 
   const memory = open();
   const none = provider(intent({ topic: 'xylophone', destination: 'Music' }));
   assert.deepEqual(await chat(memory, none, { mode: 'organize', messages: [user('Organize xylophone notes by key')] }), {
-    kind: 'answer', answer: { answer: 'No notes match “xylophone”, so there is nothing to organize. Try other words for the topic.', sources: [] },
+    kind: 'answer', answer: { answer: 'No notes match “xylophone” by keyword. Try other words for the topic.', sources: [] },
   });
   assert.equal(none.requests.length, 1);
 

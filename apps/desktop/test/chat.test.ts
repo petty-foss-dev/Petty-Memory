@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { ChatResponse } from '@enve-memory/ai';
+import type { Answer, ChatResponse } from '@enve-memory/ai';
 import type { EditProposal } from '@enve-memory/core';
-import { CHAT_LIMITS, type Turn, chatMessages, draftProblem, replyText } from '../src/renderer/lib/chat.ts';
+import {
+  CHAT_LIMITS, SAVED_LIMITS, type Turn, answerNote, chatMessages, chatTitle, draftProblem, replyText, savedMessages, savedTurns,
+} from '../src/renderer/lib/chat.ts';
 
 const answer = (text: string): Turn => ({ role: 'assistant', reply: { kind: 'answer', answer: { answer: text, sources: [] } } });
 const proposal = (summary: string, operations = 0): Turn => ({
@@ -74,6 +76,61 @@ test('an organization plan goes back as its summary, or names its scope', () => 
   assert.equal(replyText(plan('')), 'Proposed organizing 3 notes into “Gardening”.');
   const { messages } = chatMessages([{ role: 'user', content: 'organize gardening' }, { role: 'assistant', reply: plan('') }], 'thanks');
   assert.equal(messages[1]!.content, 'Proposed organizing 3 notes into “Gardening”.');
+});
+
+test('proposed actions go back as their summary, or as their count', () => {
+  const actions = (summary: string, count: number) => ({ kind: 'actions', proposal: { summary, operations: Array.from({ length: count }, () => ({})) } }) as unknown as ChatResponse;
+  assert.equal(replyText(actions('Three tasks and a brief.', 4)), 'Three tasks and a brief.');
+  assert.equal(replyText(actions('', 1)), 'Proposed 1 action.');
+  assert.equal(replyText(actions(' ', 0)), 'Proposed no actions.');
+});
+
+test('a reopened saved chat sends its saved replies as plain text', () => {
+  const turns = savedTurns([{ role: 'user', content: 'tidy the garage notes' }, { role: 'assistant', content: 'Suggested 2 changes.' }]);
+  assert.deepEqual(turns[1], { role: 'assistant', saved: 'Suggested 2 changes.' });
+  const { messages, dropped } = chatMessages(turns, 'and the shed?');
+  assert.equal(dropped, 0);
+  assert.deepEqual(messages.map((m) => m.content), ['tidy the garage notes', 'Suggested 2 changes.', 'and the shed?']);
+  assertWellFormed(messages);
+});
+
+test('saving keeps the newest whole exchanges within the saved limits, unclipped', () => {
+  const long = Array.from({ length: 60 }, (_, i) => exchange(i)).flat();
+  const kept = savedMessages(long);
+  assert.equal(kept.messages.length, SAVED_LIMITS.messages);
+  assert.equal(kept.dropped, 20);
+  assert.match(kept.messages[0]!.content, /^q10/);
+  assert.equal(kept.messages.at(-1)!.role, 'assistant');
+
+  const big = savedMessages([...exchange(1, 90_000), ...exchange(2, 90_000), ...exchange(3, 90_000)]);
+  assert.equal(big.messages.length, 2);
+  assert.equal(big.messages[1]!.content.length, 90_000);
+  assert.equal(big.dropped, 4);
+
+  const roundTrip = savedTurns(savedMessages(exchange(1)).messages);
+  assert.deepEqual(roundTrip.map((turn) => turn.role), ['user', 'assistant']);
+});
+
+test('a chat is titled after its first message', () => {
+  assert.equal(chatTitle([{ role: 'user', content: '## What did I decide about the roof?\nmore' }, answer('x')]), 'What did I decide about the roof?');
+  assert.equal(chatTitle([]), 'AI chat');
+});
+
+test('an answer saved as a note turns citations into item references and lists its sources', () => {
+  const id1 = '0190a1b2-0000-7000-8000-000000000001';
+  const id2 = '0190a1b2-0000-7000-8000-000000000002';
+  const note = answerNote({
+    answer: 'The opener uses a 433 MHz remote [1], wired as noted [2]. See also [7].',
+    sources: [
+      { n: 1, id: id1, title: 'Remote [spare]\nmanual', url: null, type: 'note' },
+      { n: 2, id: id2, title: '', url: 'https://example.com/wiring', type: 'bookmark' },
+    ],
+  } as unknown as Answer);
+  assert.match(note, new RegExp(`remote \\[\\[item:${id1}\\|Remote \\[spare manual\\]\\]`));
+  assert.ok(note.includes(`[[item:${id2}|https://example.com/wiring]]`));
+  assert.ok(note.includes('See also [7].'));
+  assert.ok(note.endsWith(`## Sources\n\n- [[item:${id1}|Remote [spare manual]]\n- [[item:${id2}|https://example.com/wiring]]`));
+  assert.equal(answerNote({ answer: ' Nothing saved about that. ', sources: [] } as unknown as Answer), 'Nothing saved about that.');
 });
 
 test('an over-long draft is explained before sending', () => {

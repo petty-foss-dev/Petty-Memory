@@ -287,3 +287,31 @@ progress { accent-color: var(--ember); width: 160px; }
 .organize-tree { list-style: none; margin: 4px 0 0; padding-left: var(--step); }
 .organize-tree li { margin: 4px 0; }
 .organize-tree .check { margin: 0; }
+
+.capture-view [hidden], .insights [hidden] { display: none !important; }
+.badge.suggested { background: var(--ember-soft); color: var(--ember-text); }
+.chat-scope-end { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.chat-turn.saved .chat-text { color: var(--text-2); }
+.saved-chats { border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; margin: 8px 0; }
+.saved-chat .link-btn[aria-current] { font-weight: 600; }
+.saved-chats input[type='search'] { width: 100%; }
+.panel.setup-checklist { border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 14px; max-width: 72ch; }
+.setup-checklist h2 { margin: 0; font-size: 1.05rem; }
+ul.setup-steps li { flex-wrap: nowrap; align-items: flex-start; gap: 10px; padding: 6px 0; }
+.setup-mark { flex: none; width: 18px; height: 18px; margin-top: 2px; border: 1.5px solid var(--border-strong); border-radius: 50%; display: inline-grid; place-items: center; font-size: 0.72rem; line-height: 1; }
+.setup-steps li.done .setup-mark { background: var(--ember); border-color: var(--ember); color: var(--on-accent); }
+.setup-steps li.done strong { color: var(--text-2); }
+.setup-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.setup-steps .btn { flex: none; }
+.op p { margin: 4px 0 0; }
+.review-card { max-width: 72ch; }
+.review-body { max-height: 48vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 12px; background: var(--surface); }
+.review-card .field input { width: 7em; }
+.insight-list li, .highlight-list li { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.insight-list p, .highlight-list p { margin: 2px 0; }
+.insights mark { background: var(--ember-soft); color: inherit; border-radius: 3px; }
+.merge-form { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 12px; margin-top: 6px; }
+.merge-form h4 { margin: 0 0 6px; }
+.merge-preview { max-height: 36vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px 10px; background: var(--surface-2); font-size: 0.9rem; }
+.highlight-list { max-height: 50vh; overflow-y: auto; }
+.highlight-list blockquote { margin: 0; padding-left: 10px; border-left: 3px solid var(--ember); white-space: pre-wrap; overflow-wrap: anywhere; }

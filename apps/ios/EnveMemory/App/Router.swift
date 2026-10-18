@@ -51,10 +51,15 @@ enum Route: Hashable {
     case savedView(String)
     case templates
     case aiChat
+    /// AI chat resumed from a saved conversation.
+    case savedChat(String)
+    case conversations
+    case review
+    case enveImport
 }
 
 enum CaptureKind: String, CaseIterable, Identifiable {
-    case note, link, task
+    case note, link, task, image
     var id: String { rawValue }
 
     var title: String {
@@ -62,6 +67,7 @@ enum CaptureKind: String, CaseIterable, Identifiable {
         case .note: "Note"
         case .link: "Link"
         case .task: "Task"
+        case .image: "Image"
         }
     }
 
@@ -70,6 +76,7 @@ enum CaptureKind: String, CaseIterable, Identifiable {
         case .note: "note.text"
         case .link: "link"
         case .task: "checkmark.circle"
+        case .image: "text.viewfinder"
         }
     }
 }

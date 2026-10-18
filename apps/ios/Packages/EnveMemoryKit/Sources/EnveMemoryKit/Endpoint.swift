@@ -34,6 +34,11 @@ public struct Endpoint: Codable, Hashable, Sendable {
                  body: try JSONCoding.makeEncoder().encode(body))
     }
 
+    /// Previews and extractions save nothing, so they carry no idempotency key and the server keeps no copy of the answer.
+    static func transient(_ path: String, _ body: some Encodable) throws -> Endpoint {
+        Endpoint(method: "POST", path: path, headers: ["Content-Type": "application/json"], body: try JSONCoding.makeEncoder().encode(body))
+    }
+
     static func post(_ path: String) -> Endpoint {
         Endpoint(method: "POST", path: path, headers: [idempotencyHeader: newKey()])
     }

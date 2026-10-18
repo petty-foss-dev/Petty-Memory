@@ -22,6 +22,7 @@ struct HomeView: View {
             if outbox.pendingCount > 0 { OutboxBanner() }
             if let cachedAt { CachedBanner(savedAt: cachedAt) }
             if let loadError { ErrorBanner(message: loadError) { Task { await load() } } }
+            if loaded { GettingStartedCard(hasItems: !items.isEmpty) }
             LibraryShortcuts()
             SuggestionsSection()
             ShelvesSection()
@@ -99,7 +100,7 @@ struct HomeView: View {
     }
 }
 
-/// The outline, saved views, templates and AI chat, plus the vault and public links when this phone may use them.
+/// The outline, daily review, saved views, templates and AI chat, plus the vault and public links when this phone may use them.
 private struct LibraryShortcuts: View {
     @Environment(Router.self) private var router
     @Environment(Connection.self) private var connection
@@ -108,12 +109,16 @@ private struct LibraryShortcuts: View {
         FlowLayout(spacing: HearthSpacing.sm) {
             FilterChip(title: "Outline", systemImage: "list.bullet.indent", isSelected: false) { router.open(.outline(nil)) }
                 .accessibilityIdentifier("OpenOutline")
+            FilterChip(title: "Daily review", systemImage: "calendar.badge.clock", isSelected: false) { router.open(.review) }
+                .accessibilityIdentifier("OpenReview")
             FilterChip(title: "Saved views", systemImage: "line.3.horizontal.decrease.circle", isSelected: false) { router.open(.savedViews) }
                 .accessibilityIdentifier("OpenSavedViews")
             FilterChip(title: "Templates", systemImage: "doc.on.doc", isSelected: false) { router.open(.templates) }
                 .accessibilityIdentifier("OpenTemplates")
             FilterChip(title: "AI chat", systemImage: "bubble.left.and.text.bubble.right", isSelected: false) { router.open(.aiChat) }
                 .accessibilityIdentifier("OpenAIChat")
+            FilterChip(title: "Saved chats", systemImage: "tray.full", isSelected: false) { router.open(.conversations) }
+                .accessibilityIdentifier("OpenSavedChats")
             if connection.canUseVault {
                 FilterChip(title: "Vault", systemImage: "lock", isSelected: false) { router.open(.vault) }
                     .accessibilityIdentifier("OpenVault")
@@ -152,7 +157,7 @@ private struct QuickCaptureBar: View {
                     .accessibilityLabel("Save")
                     .accessibilityIdentifier("QuickCaptureSend")
                 }
-                HStack(spacing: HearthSpacing.sm) {
+                FlowLayout(spacing: HearthSpacing.sm) {
                     ForEach(CaptureKind.allCases) { kind in
                         FilterChip(title: kind.title, systemImage: kind.symbol, isSelected: false) {
                             router.capture = kind

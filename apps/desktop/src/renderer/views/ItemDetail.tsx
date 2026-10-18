@@ -2,7 +2,7 @@ import type { ItemDetail, ItemPresentation, TaskPriority, TaskStatus } from '@en
 import { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import { call, errorMessage, useLive } from '../lib/api.ts';
 import { applyEdit } from '../lib/edits.ts';
-import { TYPE_LABELS, actorInfo, displayTitle, formatBytes, formatDate, formatDateTime, relativeTime, siteOf } from '../lib/format.ts';
+import { TYPE_LABELS, actorInfo, displayTitle, formatBytes, formatDate, formatDateTime, providedSourceLink, relativeTime, siteOf } from '../lib/format.ts';
 import { ATTENTION_LABELS, KIND_LABELS, isSavedView, isSecret, presentationOf, templateOf } from '../lib/presentation.ts';
 import { useApp } from '../context.ts';
 import { type EditorHandle, Icon, MarkdownEditor, MarkdownView, ProjectSelect, TagEditor, Toggle, TypeIcon, useDraft, useFeedback } from '../ui.tsx';
@@ -17,6 +17,8 @@ import { SecretBody } from './Vault.tsx';
 
 const SaveTemplateDialog = lazy(() => import('./Workflows.tsx').then((module) => ({ default: module.SaveTemplateDialog })));
 const UseTemplateDialog = lazy(() => import('./Workflows.tsx').then((module) => ({ default: module.UseTemplateDialog })));
+const InsightsSection = lazy(() => import('./Insights.tsx').then((module) => ({ default: module.InsightsSection })));
+const ImageTextSection = lazy(() => import('./ImageText.tsx').then((module) => ({ default: module.ImageTextSection })));
 
 const STATUS_LABELS: Record<TaskStatus, string> = { open: 'Open', in_progress: 'In progress', done: 'Done', cancelled: 'Cancelled' };
 
@@ -86,6 +88,9 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
   const ingest = item.metadata.ingest;
   const source = item.url ? siteOf(item.metadata.finalUrl ?? item.url) : item.attachments[0]?.filename;
   const ai = item.metadata.ai;
+  const highlight = item.metadata.enveHighlight;
+  const highlightSource = !secret && highlight && typeof highlight === 'object' && !Array.isArray(highlight) && 'sourceUrl' in highlight
+    ? providedSourceLink(highlight.sourceUrl) : null;
 
   return (
     <div className="drawer-content">
@@ -104,6 +109,11 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
       )}
 
       <div className="item-facts">
+        {highlightSource && (
+          <button className="link-button" onClick={() => void call('app.openExternal', highlightSource).catch(fail)} title={highlightSource}>
+            <Icon name="external" size={14} /> Open book source
+          </button>
+        )}
         {item.url && (
           <button className="link-button url" onClick={() => call('items.openUrl', item.id).catch(fail)} title={item.url}>
             <Icon name="external" size={14} /> {item.url}
@@ -250,8 +260,18 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
           ))}
         </section>
       )}
+      {!secret && !item.archivedAt && item.attachments.some((a) => a.mimeType.startsWith('image/')) && (
+        <Suspense fallback={<p className="muted small" role="status">Loading…</p>}>
+          <ImageTextSection key={item.id} item={item} />
+        </Suspense>
+      )}
 
       <ConnectionsSection item={item} backlinks={references.data?.incoming ?? []} />
+      {!secret && !decision && !template && !savedView && !item.metadata.conversation && !item.archivedAt && (
+        <Suspense fallback={<p className="muted small" role="status">Loading…</p>}>
+          <InsightsSection key={item.id} item={item} />
+        </Suspense>
+      )}
 
       {(ingest || item.content) && (
         <section className="reader-section" aria-label="Archived source">

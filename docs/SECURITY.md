@@ -24,7 +24,7 @@ Started by `petty-memory serve` or by the desktop app. Implemented and tested in
    - `sync`: device replication (`/sync`, `/sync/blobs`) only.
    `secrets` and `sync` are never implied by `read` or `write`; existing tokens don't gain them. Pairing grants `read` + `write` unless `--scope secrets` is added. REST routes check the scope. MCP over HTTP registers only the tools the token's scopes allow, so a read-only agent never sees a write tool, and no MCP tool touches the vault, shares or sync.
 6. **Ordinary clients have no hard-delete endpoint.** Hard delete, purge, whole-library restore and settings live in the CLI or the desktop UI. The separate `sync` scope can replicate item deletion tombstones; it never permits rewriting or deleting existing decisions. Removing a connection and restoring an item version are logged, reversible changes.
-7. **Request bodies are capped** (JSON at 2 MB), and errors never echo stack traces.
+7. **Request bodies are capped** (JSON at 2 MiB). Highlight imports and their previews allow up to 12 MiB + 1024 bytes for an escaped JSON envelope, while the decoded export still has a 2 MiB limit. Explicit server limits take precedence. Errors never echo stack traces.
 8. **Attribution:** REST writes are recorded as `api:<client name>`. MCP writes are recorded as `mcp:<clientInfo name>`, falling back to the token's client name for stateless 2025-era requests.
 
 On a LAN, traffic is plain HTTP unless the user puts it behind Tailscale (WireGuard-encrypted) or a TLS proxy. Use Tailscale for anything beyond the home network. This includes server sync, whose records are readable apart from secret-note ciphertext.

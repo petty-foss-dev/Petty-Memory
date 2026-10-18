@@ -9,6 +9,11 @@ public struct OrganizationProposal: Codable, Hashable, Sendable {
         public let body: String
         public let parentId: String?
         public let descendantCount: Int
+        /// How discovery found it; absent from servers without semantic suggestions.
+        public let match: SearchHit.Match?
+
+        /// Found only by meaning, so it's a bounded suggestion rather than a keyword match.
+        public var isSuggested: Bool { match == .semantic }
     }
 
     public struct Destination: Codable, Hashable, Sendable {
@@ -68,6 +73,8 @@ public struct OrganizationProposal: Codable, Hashable, Sendable {
     public var candidateIDs: [String] { assignments.map(\.itemId) }
 
     public func candidate(_ id: String) -> Candidate? { items.first { $0.id == id } }
+
+    public var suggestedCount: Int { items.filter(\.isSuggested).count }
 
     /// Groups first in plan order, then the notes placed there, as apply creates them.
     public func entries(in parentID: String) -> [Entry] {

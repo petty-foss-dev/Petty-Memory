@@ -44,14 +44,14 @@ export class TaskService {
     this.projects = projects;
   }
 
-  create(input: CreateTaskInput): Task {
+  create(input: CreateTaskInput, { automations = true }: { automations?: boolean } = {}): Task {
     const title = required(input.title, 'Task title');
     const priority = PRIORITY_TO_INT[oneOf(input.priority ?? 'normal', TASK_PRIORITIES, 'priority')];
     const due = input.due === undefined ? null : normalizeDue(input.due);
     const id = this.ctx.tx(() => {
       const id = this.items.insert({
         type: 'task', title, body: input.notes, project: input.project, tags: input.tags, id: input.id, createdAt: input.createdAt,
-      });
+      }, { automations });
       this.ctx.run(`INSERT INTO tasks (item_id, priority, due_at) VALUES (?, ?, ?)`, id, priority, due);
       return id;
     });

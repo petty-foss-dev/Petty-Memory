@@ -87,4 +87,13 @@ Inline references are stored in body text as `[[item:<UUID>|label]]`; backlinks 
 
 Applying a library organization records its result and original undo receipt in the destination's `subtree` change (`data.organization`), in the same transaction as its editor action. Retries return that immutable receipt; they never hash newer work into a fresh undo authorization. Undo checks both the recorded receipt and the current destination tree. Source-parent validity is checked by the editor before restoring placements. Opening an item and reminder delivery are bookkeeping and do not invalidate the organization hash.
 
-Chat messages and model replies have no library table or server response cache. `/ai/chat` bypasses idempotency storage; reviewed Apply and Undo use the ordinary replay cache. Applied headings, placements and their history remain normal library content. No migration is needed for the organizer.
+Unsaved chat messages and preview responses have no library table or server response cache. Chat, OCR, import previews and merge previews bypass idempotency storage; explicit saves, reviewed Apply and Undo use the ordinary replay cache. Applied headings, placements and their history remain normal library content.
+
+The daily knowledge layer adds versioned metadata without a migration:
+
+- `conversation`: `{version:1,mode,rootId,query,messages}`. The ordinary note's title/project name the saved chat and its body is a readable transcript. Saving updates structured messages and transcript together. Saved chats are ordinary plaintext content, covered by normal history/export/sync; editing the transcript body directly does not edit the structured messages used to resume it.
+- `reviewSchedule`: `{version:1,dueAt,lastReviewedAt,count,history:[{at,days}]}`. The last 50 reviews are retained; older item versions remain available through history. A `review` change journals each scheduling action.
+- `enveHighlight`: `{version:1,id,bookTitle,author,text,note,location,sourceUrl}` with an `importedFrom` identity for deduplication. Imported notes are snapshots, not live links to the book player's database.
+- `aiAction`: `{version:1,actionId}` marks generated tasks and brief notes. It prevents automatic enrichment from altering a just-applied action's Undo guard.
+
+Action apply/Undo records (`ai_actions`, `ai_actions_undo`) keep the result, selected operation hash, before-state and original guard in the local change log. Another device receives ordinary resulting content through sync; these local action receipts do not become cross-device Undo authority.

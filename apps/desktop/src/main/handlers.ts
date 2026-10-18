@@ -6,13 +6,15 @@ import { AiError, PROVIDERS, type ProviderId, ask, chat, createProvider, enrichI
 import { lanUrls, pairingLink } from '@enve-memory/api';
 import { localEmbeddingsSupported } from '@enve-memory/embeddings';
 import { type Item, type ItemFilter, MAX_SEALED_FILE_BYTES, MemoryError, SEALED_FILE_MIME, SEALED_FILE_NAME, pageCursor } from '@enve-memory/core';
-import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder } from '@enve-memory/importers';
-import { ingestItem } from '@enve-memory/ingestion';
+import {
+  importBookmarks, importCsv, importEnveExport, importEnveHighlights, importMarkdownFolder, previewEnveHighlights,
+} from '@enve-memory/importers';
+import { extractImageText, ingestItem } from '@enve-memory/ingestion';
 import { type BrowserWindow, dialog, shell } from 'electron';
 import QRCode from 'qrcode';
 import {
-  type AiConfig, type AiStatus, type AppInfo, IMPORT_KINDS, type ImportKind, type Prefs, type RemoteStatus, SHELVES, type Shelf, UNOPENED_DAYS,
-  type SyncStatus, type ThemeMode, type VaultFile,
+  type AiConfig, type AiStatus, type AppInfo, IMPORT_KINDS, type ImportKind, MAX_HIGHLIGHT_FILE_BYTES, type Prefs, type RemoteStatus, SHELVES, type Shelf,
+  UNOPENED_DAYS, type SyncStatus, type ThemeMode, type VaultFile,
 } from '../shared/ipc.ts';
 import { DesktopError, type Handlers } from './dispatch.ts';
 import type { Library } from './library.ts';
@@ -44,6 +46,14 @@ const formatMiB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 const str = (value: unknown, name: string): string => {
   if (typeof value !== 'string') throw new DesktopError('invalid', `${name} must be text.`);
   return value;
+};
+
+const highlightText = (value: unknown): string => {
+  const text = str(value, 'The highlights export');
+  if (Buffer.byteLength(text, 'utf8') > MAX_HIGHLIGHT_FILE_BYTES) {
+    throw new DesktopError('invalid', 'That export is larger than 2 MB. Export fewer books at a time and import each file.');
+  }
+  return text;
 };
 
 export function createHandlers(ctx: HandlerContext): Handlers {
@@ -200,7 +210,9 @@ export function createHandlers(ctx: HandlerContext): Handlers {
     },
     'app.openExternal': async (url) => {
       const parsed = new URL(str(url, 'URL'));
-      if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) throw new DesktopError('invalid', 'Only web and mail links open outside the app.');
+      if (!['http:', 'https:', 'mailto:', 'enve:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+        throw new DesktopError('invalid', 'Only web, mail and Enve links without embedded credentials open outside the app.');
+      }
       await shell.openExternal(parsed.href);
     },
     'prefs.get': prefsView,
@@ -312,6 +324,22 @@ export function createHandlers(ctx: HandlerContext): Handlers {
     'edits.undo': (receipt) => memory().edits.undo(receipt),
     'organizer.apply': (proposal, includeIds) => memory().organizer.apply(proposal, includeIds),
     'organizer.undo': (receipt) => memory().organizer.undo(receipt),
+    'actions.apply': (proposal, includeIds) => memory().actions.apply(proposal, includeIds),
+    'actions.undo': (receipt) => memory().actions.undo(receipt),
+
+    'chats.list': (options) => memory().chats.list(options ?? {}),
+    'chats.get': (id) => memory().chats.get(str(id, 'Conversation')),
+    'chats.save': (input) => memory().chats.save(input),
+    'chats.archive': (id) => memory().chats.archive(str(id, 'Conversation')),
+
+    'review.queue': (options) => memory().review.queue(options ?? {}),
+    'review.schedule': (id, days) => memory().review.schedule(str(id, 'Item'), days),
+
+    'insights.forItem': (id) => memory().insights.forItem(str(id, 'Item')),
+    'insights.previewMerge': (sourceId, targetId) => memory().insights.previewMerge(str(sourceId, 'Note'), str(targetId, 'Note')),
+    'insights.merge': (proposal) => memory().insights.merge(proposal),
+
+    'ocr.extract': (attachmentId) => extractImageText(memory(), str(attachmentId, 'Attachment')),
 
     'vault.state': () => memory().vault.state(),
     'vault.setup': (passphrase) => memory().vault.setup(str(passphrase, 'Passphrase')),
@@ -592,6 +620,9 @@ export function createHandlers(ctx: HandlerContext): Handlers {
           return importEnveExport(m, source);
       }
     },
+    'highlights.preview': (data) => previewEnveHighlights(highlightText(data)),
+    'highlights.import': (data, options) =>
+      importEnveHighlights(memory(), highlightText(data), options?.project ? { project: str(options.project, 'Project') } : {}),
 
     'sync.status': syncStatus,
     'sync.pickFolder': () => pick({ title: 'Choose a folder your computers already sync', properties: ['openDirectory', 'createDirectory'] }),

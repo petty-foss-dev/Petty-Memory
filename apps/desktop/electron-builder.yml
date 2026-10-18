@@ -9,6 +9,7 @@ files:
   - dist/main.js
   - dist/preload.cjs
   - dist/cli.mjs
+  - dist/ocr-worker.cjs
   - dist/renderer/**
   - dist/web/**
   - "!**/*.map"
@@ -23,9 +24,13 @@ extraResources:
   - from: resources/cli.mjs
     to: cli.mjs
 asarUnpack:
+  - dist/ocr-worker.cjs
   - node_modules/onnxruntime-node/**
   - node_modules/sharp/**
   - node_modules/@img/**
+  - node_modules/tesseract.js/**
+  - node_modules/tesseract.js-core/**
+  - node_modules/@tesseract.js-data/eng/**
 # Every native dependency ships N-API prebuilds, so there's nothing to rebuild against Electron's ABI.
 npmRebuild: false
 mac:

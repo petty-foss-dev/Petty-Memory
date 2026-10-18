@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { type ApiClient, type ClientScope, DrainWorker, type EnveMemory, INTENTS, MAX_SEALED_FILE_BYTES, MemoryError, parseWhen } from '@enve-memory/core';
 import { processPending } from '@enve-memory/ingestion';
 import { type AiProvider, AiError, providerFor } from '@enve-memory/ai';
+import { ENVE_HIGHLIGHT_MAX_BYTES } from '@enve-memory/importers';
 import { createServer as createMcpServer } from '@enve-memory/mcp';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { type AuthInfo, createMcpHandler } from '@modelcontextprotocol/server';
@@ -14,6 +15,7 @@ import { type Route, routes } from './routes.ts';
 
 export const DEFAULT_PORT = 49231;
 const MAX_JSON_BODY = 2 * 1024 * 1024;
+const MAX_IMPORT_JSON_BODY = ENVE_HIGHLIGHT_MAX_BYTES * 6 + 1024;
 const MAX_FILE_BODY = 200 * 1024 * 1024;
 const MAX_SEALED_FILE_BODY = Math.ceil((MAX_SEALED_FILE_BYTES + 4096 + 9) / 3) * 4 + 1024;
 
@@ -131,9 +133,10 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
         return await mcpNode(req, res);
       }
 
-      // Chat previews never write library data; persisting their replies would retain session conversations.
-      const transientChat = req.method === 'POST' && url.pathname === '/api/v1/ai/chat';
-      const rawKey = req.method === 'GET' || req.method === 'HEAD' || transientChat ? undefined : idempotencyKeyOf(req);
+      const preview = req.method === 'POST' && [
+        '/api/v1/ai/chat', '/api/v1/capture/ocr', '/api/v1/imports/enve-highlights/preview', '/api/v1/insights/merge/preview',
+      ].includes(url.pathname);
+      const rawKey = req.method === 'GET' || req.method === 'HEAD' || preview ? undefined : idempotencyKeyOf(req);
       // Bound to the method and path, so one key can't replay a different endpoint's answer.
       const idempotencyKey = rawKey && `${req.method} ${url.pathname} ${rawKey}`;
       // A client retrying after a lost response gets the original answer instead of a second copy.
@@ -230,7 +233,9 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
       }
       if (replay) return replayResponse(res, replay);
       const fileEnvelope = req.method === 'PUT' && /^\/api\/v1\/vault\/items\/[^/]+\/attachments\/[^/]+$/.test(url.pathname);
-      const bodyLimit = url.pathname === '/api/v1/sync' ? maxSync : fileEnvelope ? Math.min(maxUpload, MAX_SEALED_FILE_BODY) : maxJson;
+      const importEnvelope = req.method === 'POST' && /^\/api\/v1\/imports\/enve-highlights(?:\/preview)?$/.test(url.pathname);
+      const bodyLimit = url.pathname === '/api/v1/sync' ? maxSync : fileEnvelope ? Math.min(maxUpload, MAX_SEALED_FILE_BODY)
+        : importEnvelope && options.maxJsonBytes === undefined ? MAX_IMPORT_JSON_BODY : maxJson;
       const body = req.method === 'GET' ? undefined : await readJson(req, bodyLimit);
       assertClientActive(memory, client);
       const route = match.route;

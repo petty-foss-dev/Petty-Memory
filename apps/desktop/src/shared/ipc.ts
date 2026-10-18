@@ -7,9 +7,30 @@ import type {
   RelatedItem, Rule, SaveLinkInput, SaveNoteInput, SavedView, SavedViewInput, SearchHit, Settings, SyncResult, Task, TemplateUseInput,
   UpdateItemInput, UpdateProjectInput, UpdateTaskInput, VaultState, ViewPage,
 } from '@enve-memory/core';
-import type { ImportResult } from '@enve-memory/importers';
+import type { ImportResult, previewEnveHighlights } from '@enve-memory/importers';
 
 export type ThemeMode = 'system' | 'dark' | 'light';
+
+export type SavedConversation = ReturnType<EnveMemory['chats']['get']>;
+export type ConversationInput = Parameters<EnveMemory['chats']['save']>[0];
+export type ReviewCard = ReturnType<EnveMemory['review']['queue']>[number];
+export type ItemInsights = ReturnType<EnveMemory['insights']['forItem']>;
+export type KnowledgeSuggestion = ItemInsights['mentions'][number];
+export type MergeProposal = ReturnType<EnveMemory['insights']['previewMerge']>;
+export type ActionProposal = Parameters<EnveMemory['actions']['apply']>[0];
+export type ActionOperation = ActionProposal['operations'][number];
+export type ActionResult = ReturnType<EnveMemory['actions']['apply']>;
+export type ActionUndoReceipt = Parameters<EnveMemory['actions']['undo']>[0];
+export type HighlightPreview = Awaited<ReturnType<typeof previewEnveHighlights>>;
+export type EnveHighlight = HighlightPreview['entries'][number];
+
+export interface OcrResult {
+  text: string;
+  engine: string;
+}
+
+/** Enve highlight exports are read as UTF-8 text in the renderer and checked again in main. */
+export const MAX_HIGHLIGHT_FILE_BYTES = 2 * 1024 * 1024;
 
 export type LibraryStats = { projects: number; tags: number; tagNames: string[] } & Record<ItemType, number>;
 
@@ -270,6 +291,26 @@ export interface Api {
   'edits.undo': (receipt: EditUndoReceipt) => ReturnType<EnveMemory['edits']['undo']>;
   'organizer.apply': (proposal: OrganizationProposal, includeIds?: string[]) => OrganizationResult;
   'organizer.undo': (receipt: OrganizationReceipt) => EditorActionResult;
+  'actions.apply': (proposal: ActionProposal, includeIds?: string[]) => ActionResult;
+  'actions.undo': (receipt: ActionUndoReceipt) => ReturnType<EnveMemory['actions']['undo']>;
+
+  /** The newest 100 saved chats, or the newest 100 whose text matches `query` anywhere in the library. */
+  'chats.list': (options?: { query?: string }) => SavedConversation[];
+  'chats.get': (id: string) => SavedConversation;
+  /** Saved only when the user asks; an `id` updates that conversation. */
+  'chats.save': (input: ConversationInput) => SavedConversation;
+  'chats.archive': (id: string) => ReturnType<EnveMemory['chats']['archive']>;
+
+  'review.queue': (options?: { limit?: number; project?: string }) => ReviewCard[];
+  'review.schedule': (id: string, days: number) => ReturnType<EnveMemory['review']['schedule']>;
+
+  'insights.forItem': (id: string) => ItemInsights;
+  'insights.previewMerge': (sourceId: string, targetId: string) => MergeProposal;
+  /** Undone and redone with `editor.undo` and `editor.redo`. */
+  'insights.merge': (proposal: MergeProposal) => EditorActionResult;
+
+  /** Reads text from one ordinary image attachment; nothing is saved. */
+  'ocr.extract': (attachmentId: string) => OcrResult;
 
   'vault.state': () => VaultState;
   'vault.setup': (passphrase: string) => VaultState;
@@ -362,6 +403,9 @@ export interface Api {
   'rules.setEnabled': (id: string, enabled: boolean) => Rule;
   'rules.delete': (id: string) => void;
   'imports.run': (kind: ImportKind, project?: string) => ImportResult | null;
+  /** `data` is the export's text, never a path. */
+  'highlights.preview': (data: string) => HighlightPreview;
+  'highlights.import': (data: string, options?: { project?: string }) => ImportResult;
 
   'sync.status': () => SyncStatus;
   'sync.pickFolder': () => string | null;
@@ -435,6 +479,18 @@ export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
   'edits.undo': 'write',
   'organizer.apply': 'write',
   'organizer.undo': 'write',
+  'actions.apply': 'write',
+  'actions.undo': 'write',
+  'chats.list': 'read',
+  'chats.get': 'read',
+  'chats.save': 'write',
+  'chats.archive': 'write',
+  'review.queue': 'read',
+  'review.schedule': 'write',
+  'insights.forItem': 'read',
+  'insights.previewMerge': 'read',
+  'insights.merge': 'write',
+  'ocr.extract': 'read',
   'vault.state': 'read',
   'vault.setup': 'write',
   'vault.unlock': 'write',
@@ -508,6 +564,8 @@ export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
   'rules.setEnabled': 'write',
   'rules.delete': 'write',
   'imports.run': 'write',
+  'highlights.preview': 'read',
+  'highlights.import': 'write',
   'sync.status': 'read',
   'sync.pickFolder': 'read',
   'sync.start': 'write',

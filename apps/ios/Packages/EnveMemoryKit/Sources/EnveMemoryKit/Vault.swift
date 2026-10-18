@@ -172,8 +172,9 @@ extension Endpoint {
                  body: try JSONCoding.makeEncoder().encode(EnvelopeBody(envelope: envelope)))
     }
 
-    /// Vault, share-creation and AI calls are online-only; the outbox refuses them.
+    /// Vault, share-creation, AI, saved-chat, review, insight, import and OCR calls are online-only; the outbox refuses them.
     public var isOnlineOnly: Bool {
         path.hasPrefix("/vault") || path.hasPrefix("/ai/") || (method == "POST" && path == "/shares")
+            || ["/conversations", "/review", "/insights/", "/imports/"].contains { path.hasPrefix($0) } || path == "/capture/ocr"
     }
 }

@@ -22,6 +22,7 @@ struct ItemDetailView: View {
     @State private var downloading: String?
     @State private var completing = false
     @State private var sheet: ItemSheet?
+    @State private var extracting: Attachment?
 
     struct ItemSheet: Identifiable {
         enum Kind: String { case edit, ai, share, move, saveTemplate, useTemplate }
@@ -36,7 +37,8 @@ struct ItemDetailView: View {
             if let error { ErrorBanner(message: error) { Task { await load() } } }
             if let detail {
                 ItemDetailContent(detail: detail, note: note, content: content, references: references, progress: progress,
-                                  downloading: downloading, completing: completing, open: open, complete: complete)
+                                  downloading: downloading, completing: completing, open: open, complete: complete,
+                                  extractText: { extracting = $0 })
                     .environment(\.referenceTitles, referenceTitles)
             } else if error == nil {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, HearthSpacing.xxxl)
@@ -61,6 +63,11 @@ struct ItemDetailView: View {
         }
         .sheet(item: $sheet) { sheet in
             sheetContent(sheet.kind, item: sheet.item).environment(\.hearth, hearth)
+        }
+        .sheet(item: $extracting) { attachment in
+            if let item = detail?.item {
+                AttachmentTextSheet(item: item, attachment: attachment).environment(\.hearth, hearth)
+            }
         }
         .quickLookPreview($preview)
         .refreshable { await load() }
@@ -152,6 +159,7 @@ private struct ItemDetailContent: View {
     let completing: Bool
     let open: (Attachment) -> Void
     let complete: () -> Void
+    let extractText: (Attachment) -> Void
 
     @Environment(Router.self) private var router
     @Environment(OutboxService.self) private var outbox
@@ -190,6 +198,10 @@ private struct ItemDetailContent: View {
         if !detail.attachments.isEmpty, !item.isSecret { attachments }
         archive
         ConnectionsSection(item: item, relations: detail.relations, references: references)
+        if !item.isSecret, item.type != .decision, item.archivedAt == nil, item.metadata.conversation == nil,
+           item.metadata.template == nil, item.metadata.savedView == nil, outbox.pending.created[item.id] == nil {
+            SuggestedConnections(item: item)
+        }
         footer
     }
 
@@ -205,6 +217,11 @@ private struct ItemDetailContent: View {
                 Text(source)
                     .font(HearthFont.footnote)
                     .foregroundStyle(hearth.textSecondary)
+            }
+            if !item.isSecret, let url = item.metadata.enveHighlight?.sourceURL {
+                Link("Open book source", destination: url)
+                    .buttonStyle(.hearthSecondary)
+                    .accessibilityIdentifier("EnveHighlightSource")
             }
             if let url = item.url.flatMap(URL.init(string:)) {
                 Button {
@@ -254,27 +271,36 @@ private struct ItemDetailContent: View {
         VStack(alignment: .leading, spacing: HearthSpacing.sm) {
             Overline("Attachments")
             RowStack(data: detail.attachments) { attachment in
-                Button { open(attachment) } label: {
-                    HStack(spacing: HearthSpacing.md) {
-                        TypeGlyph(symbol: attachment.mimeType.hasPrefix("image/") ? "photo" : attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(attachment.filename).font(HearthFont.subheadline).lineLimit(1)
-                            Text("\(attachment.size.formatted(.byteCount(style: .file))) · \(attachment.mimeType)")
-                                .font(HearthFont.caption)
-                                .foregroundStyle(hearth.textTertiary)
+                HStack(spacing: HearthSpacing.md) {
+                    Button { open(attachment) } label: {
+                        HStack(spacing: HearthSpacing.md) {
+                            TypeGlyph(symbol: attachment.mimeType.hasPrefix("image/") ? "photo" : attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(attachment.filename).font(HearthFont.subheadline).lineLimit(1)
+                                Text("\(attachment.size.formatted(.byteCount(style: .file))) · \(attachment.mimeType)")
+                                    .font(HearthFont.caption)
+                                    .foregroundStyle(hearth.textTertiary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            if downloading == attachment.id {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "eye").foregroundStyle(hearth.accent)
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        if downloading == attachment.id {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "eye").foregroundStyle(hearth.accent)
-                        }
+                        .padding(.vertical, HearthSpacing.xs)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, HearthSpacing.xs)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Downloads and previews the file")
+                    if attachment.mimeType.hasPrefix("image/") {
+                        Button { extractText(attachment) } label: {
+                            Image(systemName: "text.viewfinder").foregroundStyle(hearth.accent)
+                        }
+                        .accessibilityLabel("Extract text")
+                        .accessibilityIdentifier("AttachmentExtractText")
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityHint("Downloads and previews the file")
             }
         }
     }

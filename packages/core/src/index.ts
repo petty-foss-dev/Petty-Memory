@@ -1,4 +1,8 @@
 export { EnveMemory, type OpenOptions } from './memory.ts';
+export type { ActionService, ActionOperation, ActionProposal, ActionReceipt, ActionResult, ActionScope, ActionScopeInput } from './actions.ts';
+export type { ConversationService, ConversationMode, ConversationMessage, SavedConversation, SaveConversationInput } from './conversations.ts';
+export type { ReviewService, ReviewCard, ReviewQueueOptions, ReviewSchedule } from './review.ts';
+export type { InsightService, ItemInsights, KnowledgeSuggestion, MergeProposal, MergePreview } from './insights.ts';
 export { MemoryError, type MemoryErrorCode } from './errors.ts';
 export { cacheDir, defaultHome, pathsFor, type MemoryPaths } from './paths.ts';
 export { migrate, openDatabase, schemaVersion, transaction } from './db.ts';

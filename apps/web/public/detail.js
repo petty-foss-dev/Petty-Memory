@@ -1,11 +1,12 @@
 import { can, del, enc, get, patch, post, query } from './api.js';
 import { clear, confirmDialog, empty, errorBox, field, h, loading, promptDialog, when } from './dom.js';
 import { applyEdit } from './edits.js';
+import { imageTextPanel, insightsPanel } from './insights.js';
 import { pickItem } from './picker.js';
 import { createShareForm } from './shares.js';
-import { displayTitle, isSecret, presentationOf, renderText } from './text.js';
+import { displayTitle, isSecret, presentationOf, providedSourceLink, renderText } from './text.js';
 import { secretPanel } from './vault.js';
-import { workflowPanel } from './workflows.js';
+import { isSavedView, templateOf, workflowPanel } from './workflows.js';
 
 const RELATION_KINDS = [['related_to', 'Related to'], ['references', 'References'], ['derived_from', 'Derived from'], ['depends_on', 'Depends on']];
 const AI_PRESETS = [
@@ -123,17 +124,30 @@ export function createDetail(ctx) {
       crumbs);
   }
 
+  // Accepting a suggested connection redraws only the connections, leaving open suggestions and drafts as they are.
+  async function refreshConnections(state) {
+    const item = await get(`/items/${enc(state.id)}`).catch(() => null);
+    if (!item || current !== state) return;
+    state.item = item;
+    el.querySelector('.connections')?.replaceWith(connectionsSection(state));
+  }
+
   function render(state) {
     const { item } = state;
     const secret = isSecret(item);
     const writable = can('write');
+    const images = !secret && writable && !item.archivedAt && (item.attachments ?? []).some((a) => a.mimeType.startsWith('image/'));
     clear(el,
       header(state),
       h('p', { class: 'meta' }, [item.type, item.project?.name, `updated ${when(item.updatedAt)}`].filter(Boolean).join(' · ')),
       secret ? secretPanel(item, ctx) : contentSection(state),
+      images ? imageTextPanel(state, ctx) : null,
       secret ? null : presentationSection(state),
       secret ? null : workflowPanel(state, ctx),
       connectionsSection(state),
+      secret || item.type === 'decision' || templateOf(item) || isSavedView(item) || item.metadata?.conversation || item.archivedAt
+        ? null
+        : insightsPanel(state, ctx, { onConnected: () => refreshConnections(state) }),
       historySection(state),
       writable && !secret && item.type !== 'decision' ? aiSection(state) : null,
       writable && !secret ? h('section', { class: 'panel', onClick: () => { state.interacting = true; } }, h('h2', null, 'Public link'), createShareForm(item, ctx)) : null);
@@ -141,12 +155,14 @@ export function createDetail(ctx) {
 
   function contentSection(state) {
     const { item } = state;
+    const source = providedSourceLink(item.metadata?.enveHighlight?.sourceUrl);
     const section = h('section', { class: 'panel content' });
     const editable = can('write') && item.type !== 'decision';
     if (!state.editing) {
       clear(section,
         h('h1', { class: `item-title kind-${presentationOf(item).kind}` }, displayTitle(item)),
         item.url ? h('p', { class: 'url' }, safeUrl(item.url)) : null,
+        source ? h('p', { class: 'url' }, h('a', { href: source, target: '_blank', rel: 'noopener noreferrer' }, 'Open book source')) : null,
         item.body ? renderText(item.body, (id, label) => referenceLink(id, label, ctx.select)) : empty('No text yet.'),
         can('write') ? tagEditor(state) : item.tags.length ? h('p', { class: 'tags' }, item.tags.map((t) => h('span', { class: 'tag' }, `#${t}`))) : null,
         item.type === 'decision' ? h('p', { class: 'hint' }, 'Decisions are append-only. Record a new decision to change one.') : null,
@@ -302,7 +318,7 @@ export function createDetail(ctx) {
 
   function connectionsSection(state) {
     const { item } = state;
-    const section = h('section', { class: 'panel' }, h('h2', null, 'Connections'), loading());
+    const section = h('section', { class: 'panel connections' }, h('h2', null, 'Connections'), loading());
     const writable = can('write');
     const relLink = (rel) => h('button', { type: 'button', class: 'ref', onClick: () => ctx.select(rel.id) }, rel.title || 'Untitled');
     get(`/items/${enc(item.id)}/references`).then(({ outgoing, incoming }) => {

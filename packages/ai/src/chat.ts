@@ -1,4 +1,5 @@
-import { type EditProposal, type EnveMemory, MemoryError, type OrganizationProposal } from '@enve-memory/core';
+import { type ActionProposal, type EditProposal, type EnveMemory, MemoryError, type OrganizationProposal } from '@enve-memory/core';
+import { proposeActions } from './actions.ts';
 import { type Answer, ask } from './ask.ts';
 import { MAX_INSTRUCTION, proposeEdit } from './edit.ts';
 import { proposeOrganization } from './organize.ts';
@@ -10,18 +11,20 @@ export interface ChatMessage {
 }
 
 export interface ChatRequest {
-  mode: 'ask' | 'edit' | 'organize';
+  mode: 'ask' | 'edit' | 'organize' | 'actions';
   messages: ChatMessage[];
   project?: string;
   rootId?: string;
+  query?: string;
 }
 
 export type ChatResponse =
   | { kind: 'answer'; answer: Answer }
   | { kind: 'proposal'; proposal: EditProposal }
-  | { kind: 'organization'; proposal: OrganizationProposal };
+  | { kind: 'organization'; proposal: OrganizationProposal }
+  | { kind: 'actions'; proposal: ActionProposal };
 
-export const CHAT_MODES = ['ask', 'edit', 'organize'] as const;
+export const CHAT_MODES = ['ask', 'edit', 'organize', 'actions'] as const;
 export const CHAT_LIMITS = { messages: 12, messageChars: MAX_INSTRUCTION, totalChars: 16_000 } as const;
 
 const invalid = (message: string) => new MemoryError('invalid', message);
@@ -37,7 +40,7 @@ function optionalId(value: unknown, field: string): string | undefined {
 export function parseChatRequest(raw: unknown): ChatRequest {
   if (!isObject(raw)) throw invalid('Send the chat as an object with a mode and messages.');
   const { mode, messages } = raw;
-  if (!CHAT_MODES.includes(mode as ChatRequest['mode'])) throw invalid('Choose a chat mode: "ask", "edit" or "organize".');
+  if (!CHAT_MODES.includes(mode as ChatRequest['mode'])) throw invalid('Choose a chat mode: "ask", "edit", "organize" or "actions".');
   if (!Array.isArray(messages) || messages.length === 0) throw invalid('A chat needs at least one message from you.');
   if (messages.length > CHAT_LIMITS.messages) throw invalid(`A chat can carry at most ${CHAT_LIMITS.messages} messages; start a new chat to keep going.`);
   let total = 0;
@@ -62,15 +65,26 @@ export function parseChatRequest(raw: unknown): ChatRequest {
     if (!rootId) throw invalid('Choose the note to change before asking for changes.');
     request.rootId = rootId;
   }
+  if (request.mode === 'actions') {
+    const query = optionalId(raw.query, 'topic');
+    if (!!rootId === !!query) throw invalid('Choose either a branch or a topic for AI actions.');
+    if (rootId) request.rootId = rootId;
+    if (query) {
+      if (query.length > 500) throw invalid('An action topic can contain at most 500 characters.');
+      request.query = query;
+      if (project) request.project = project;
+    }
+  }
   return request;
 }
 
-// The caller keeps the conversation; previews never mutate the library.
+// Saving a conversation and applying proposals are separate, explicit operations.
 export async function chat(memory: EnveMemory, provider: AiProvider, request: ChatRequest): Promise<ChatResponse> {
-  const { mode, messages, project, rootId } = parseChatRequest(request);
+  const { mode, messages, project, rootId, query } = parseChatRequest(request);
   const history = messages.slice(0, -1);
   const last = messages.at(-1)!.content;
   if (mode === 'ask') return { kind: 'answer', answer: await ask(memory, provider, last, project ? { project } : {}, history) };
   if (mode === 'organize') return proposeOrganization(memory, provider, messages);
+  if (mode === 'actions') return proposeActions(memory, provider, { rootId, query, project }, messages);
   return { kind: 'proposal', proposal: await proposeEdit(memory, provider, { rootId: rootId!, instruction: last, history }) };
 }

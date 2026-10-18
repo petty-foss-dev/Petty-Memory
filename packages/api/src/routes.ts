@@ -1,5 +1,7 @@
 import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type OrganizationProposal, type SavedViewInput, type SyncRecord } from '@enve-memory/core';
 import { type AiProvider, type ChatRequest, PROVIDERS, chat, proposeEdit } from '@enve-memory/ai';
+import { extractImageText } from '@enve-memory/ingestion';
+import { importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
 import { HttpError } from './errors.ts';
 
 export interface RouteContext {
@@ -154,7 +156,7 @@ export const routes: Route[] = [
     method: 'GET', pattern: path('/capabilities'), scope: 'read',
     handle: ({ memory }) => ({
       api: 1, schema: memory.schemaVersion,
-      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates', 'ai-chat', 'library-organization'],
+      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates', 'ai-chat', 'library-organization', 'saved-conversations', 'ai-actions', 'knowledge-review', 'connection-suggestions', 'image-ocr', 'enve-highlights'],
       maxWait: 25_000,
     }),
   },
@@ -188,6 +190,45 @@ export const routes: Route[] = [
     handle: ({ memory, query }) => memory.items.list(queryFilter(query), queryLimit(query)),
   },
   { method: 'GET', pattern: path('/views'), scope: 'read', handle: ({ memory }) => memory.views.list() },
+  { method: 'GET', pattern: path('/conversations'), scope: 'read', handle: ({ memory, query }) => memory.chats.list({ query: query.get('query') ?? undefined }) },
+  { method: 'GET', pattern: path('/conversations/:id'), scope: 'read', handle: ({ memory, params }) => memory.chats.get(params[0]!) },
+  {
+    method: 'POST', pattern: path('/conversations'), scope: 'write', status: 201,
+    handle: ({ memory, body }) => memory.chats.save(body as unknown as Parameters<EnveMemory['chats']['save']>[0]),
+  },
+  { method: 'DELETE', pattern: path('/conversations/:id'), scope: 'write', handle: ({ memory, params }) => memory.chats.archive(params[0]!) },
+  {
+    method: 'GET', pattern: path('/review'), scope: 'read',
+    handle: ({ memory, query }) => memory.review.queue({ limit: queryLimit(query), project: query.get('project') ?? undefined }),
+  },
+  {
+    method: 'POST', pattern: path('/review/:id'), scope: 'write',
+    handle: ({ memory, params, body }) => memory.review.schedule(params[0]!, body?.days as number),
+  },
+  { method: 'GET', pattern: path('/items/:id/insights'), scope: 'read', handle: ({ memory, params }) => memory.insights.forItem(params[0]!) },
+  {
+    method: 'POST', pattern: path('/insights/merge/preview'), scope: 'read',
+    handle: ({ memory, body }) => memory.insights.previewMerge(str(body, 'sourceId') ?? '', str(body, 'targetId') ?? ''),
+  },
+  {
+    method: 'POST', pattern: path('/insights/merge'), scope: 'write',
+    handle: ({ memory, body }) => memory.insights.merge(body?.proposal as Parameters<EnveMemory['insights']['merge']>[0]),
+  },
+  {
+    method: 'POST', pattern: path('/capture/ocr'), scope: 'write',
+    handle: ({ memory, client, body }) => {
+      if (!client.scopes.includes('read')) throw new HttpError(403, 'insufficient_scope', 'Reading an image needs the "read" scope as well as "write".');
+      return extractImageText(memory, str(body, 'attachmentId') ?? '');
+    },
+  },
+  {
+    method: 'POST', pattern: path('/imports/enve-highlights/preview'), scope: 'write',
+    handle: ({ body }) => previewEnveHighlights(body?.data),
+  },
+  {
+    method: 'POST', pattern: path('/imports/enve-highlights'), scope: 'write', status: 201,
+    handle: ({ memory, body }) => importEnveHighlights(memory, body?.data, { project: str(body, 'project') }),
+  },
   {
     method: 'POST', pattern: path('/views'), scope: 'write', status: 201,
     handle: ({ memory, body }) => memory.views.create(body as unknown as SavedViewInput),
@@ -299,11 +340,19 @@ export const routes: Route[] = [
   {
     method: 'POST', pattern: path('/ai/chat'), scope: 'read',
     handle: ({ memory, client, body, aiProvider }) => {
-      if (['edit', 'organize'].includes(body?.mode as string) && !client.scopes.includes('write')) throw new HttpError(403, 'insufficient_scope', 'This client needs the "write" scope to request changes.');
+      if (['edit', 'organize', 'actions'].includes(body?.mode as string) && !client.scopes.includes('write')) throw new HttpError(403, 'insufficient_scope', 'This client needs the "write" scope to request changes.');
       const provider = aiProvider();
       if (!provider) throw new HttpError(400, 'invalid', 'Configure an AI provider on the host first with `petty-memory ai use`.');
       return chat(memory, provider, body as unknown as ChatRequest);
     },
+  },
+  {
+    method: 'POST', pattern: path('/ai/actions/apply'), scope: 'write',
+    handle: ({ memory, body }) => memory.actions.apply(body?.proposal as Parameters<EnveMemory['actions']['apply']>[0], strList(body, 'includeIds')),
+  },
+  {
+    method: 'POST', pattern: path('/ai/actions/undo'), scope: 'write',
+    handle: ({ memory, body }) => memory.actions.undo(body?.receipt as Parameters<EnveMemory['actions']['undo']>[0]),
   },
   {
     method: 'POST', pattern: path('/ai/organize/apply'), scope: 'write',

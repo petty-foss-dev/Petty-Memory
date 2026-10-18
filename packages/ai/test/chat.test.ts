@@ -40,7 +40,7 @@ test('chat requests are bounded and validated before any model call', async () =
   const bad: [unknown, RegExp][] = [
     [null, /object with a mode/],
     [[user('hi')], /object with a mode/],
-    [{ mode: 'agent', messages: [user('relay')] }, /"ask", "edit" or "organize"/],
+    [{ mode: 'agent', messages: [user('relay')] }, /"ask", "edit", "organize" or "actions"/],
     [{ mode: 'ask' }, /at least one message/],
     [{ mode: 'ask', messages: [] }, /at least one message/],
     [{ mode: 'ask', messages: [...turns(12, 10), user('relay')] }, /at most 12 messages/],

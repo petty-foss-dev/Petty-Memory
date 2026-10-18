@@ -54,6 +54,15 @@ test('AI chat only previews, so applying its proposals and organizations stays a
   for (const method of ['edits.apply', 'edits.undo', 'organizer.apply', 'organizer.undo'] as Method[]) assert.equal(METHOD_KINDS[method], 'write', method);
 });
 
+test('everyday workflows only write where they change the library', () => {
+  for (const method of ['actions.apply', 'actions.undo', 'chats.save', 'chats.archive', 'review.schedule', 'insights.merge', 'highlights.import'] as Method[]) {
+    assert.equal(METHOD_KINDS[method], 'write', method);
+  }
+  for (const method of ['chats.list', 'chats.get', 'review.queue', 'insights.forItem', 'insights.previewMerge', 'ocr.extract', 'highlights.preview'] as Method[]) {
+    assert.equal(METHOD_KINDS[method], 'read', method);
+  }
+});
+
 test('isMethod rejects inherited and made-up names', () => {
   for (const bad of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'items', 'items.nuke', '', 42, null, undefined, {}, ['items.get']]) {
     assert.equal(isMethod(bad), false, String(bad));

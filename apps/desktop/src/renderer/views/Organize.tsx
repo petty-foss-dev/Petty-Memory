@@ -49,6 +49,7 @@ export function OrganizeDialog({ proposal, onApplied, onUndone, onOpen, onClose 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const items = new Map(proposal.items.map((item) => [item.id, item]));
+  const suggested = proposal.items.filter((item) => item.match === 'semantic').length;
   const { destination } = proposal;
 
   useEffect(() => {
@@ -110,6 +111,7 @@ export function OrganizeDialog({ proposal, onApplied, onUndone, onOpen, onClose 
               />
               <span>
                 {candidateTitle(item)}
+                {item.match === 'semantic' && <> <span className="badge suggested" title="Found by meaning rather than by your words">Suggested</span></>}
                 {item.descendantCount > 0 && <span className="muted small"> · brings {item.descendantCount} inside it</span>}
                 <span className="muted small"> · from {from}</span>
               </span>
@@ -140,6 +142,12 @@ export function OrganizeDialog({ proposal, onApplied, onUndone, onOpen, onClose 
             {proposal.affectedCount === 1 ? '' : 's'} in all, counting what’s inside them. Moving a note brings everything inside it.
             Text, tags, projects and attachments stay as they are. Untick anything that doesn’t belong.
           </p>
+          {suggested > 0 && (
+            <p className="muted small">
+              {suggested} marked Suggested {suggested === 1 ? 'was' : 'were'} found by meaning rather than by your words. Only the closest few
+              are offered this way, so check them before moving.
+            </p>
+          )}
           <div className="organize-root" role="group" aria-label="Proposed structure">
             <span className="organize-group">
               <Icon name="note" size={14} /> {destination.title}{' '}

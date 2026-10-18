@@ -135,6 +135,8 @@ public struct ItemMetadata: Codable, Hashable, Sendable {
     public var vault: SecretEnvelope?
     public var savedView: SavedViewMetadata?
     public var template: TemplateMetadata?
+    public var enveHighlight: EnveHighlight?
+    public var conversation: JSONValue?
 
     public init() {}
 }

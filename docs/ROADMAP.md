@@ -6,13 +6,13 @@ The whole local product: the library (notes, links, files, images, tasks, decisi
 
 ## Next
 
-- **Knowledge resurfacing**, with local review history and adjustable frequency. Existing review marks identify work to do; resurfacing would help revisit useful knowledge over time. [Readwise's review model](https://docs.readwise.io/readwise/docs/faqs/reviewing-highlights) is a reference, not an implemented feature.
-- **Unlinked mentions**, to suggest connections from ordinary text while leaving link creation under user control. Existing explicit references/backlinks stay the authority. [Obsidian's backlinks](https://obsidian.md/help/plugins/backlinks) show the distinction. Not implemented yet.
 - **Signed and notarized macOS builds**, so the app opens without the right-click workaround.
 - **Windows and Linux installers** built and tested on those systems, published with each release.
 - **Store listings** for the browser extension (Chrome Web Store, Firefox Add-ons) and the iOS app.
+- **Physical-device acceptance** on iPhone for dictation, the camera, Vision text recognition, background refresh and the share sheet.
 - **Better briefings for AI tools**, tuned from real use: tool descriptions, what `get_project` returns, and how much context each call costs.
 - **Semantic search on Intel Macs**, once the embedding runtime ships an Intel build.
+- **Links back into Enve books**, once Enve Book Player's export includes stable book identifiers or source links. Imports are file-based today, with no live sync.
 
 ## Daftak parity program
 
@@ -25,6 +25,12 @@ Local capture, storage, search and editing remain complete without an account, n
 ## Workflow additions after parity
 
 The October 17 research pass selected reusable note/checklist templates and saved keyword/filter views as the first implementation batch. They reduce repeated setup and make large libraries easier to use without AI. [Outline templates](https://docs.getoutline.com/s/guide/doc/templates-GP6DXgRtxl) and [Obsidian Bases](https://obsidian.md/help/bases) informed the workflow choices; Memory implements a bounded version within its existing item model. See [WORKFLOWS.md](WORKFLOWS.md).
+
+## Everyday workflows
+
+The second batch, also authorized on October 17, adds opt-in saved AI chats, suggested actions, semantic suggestions for topic organization, note dictation and image text, daily review, suggested connections with duplicate merging, Enve highlight imports and first-run checklists. [POWER_PLAN.md](POWER_PLAN.md) records the scope; [POWER_FEATURES.md](POWER_FEATURES.md) is the user guide.
+
+[Readwise's review model](https://docs.readwise.io/readwise/docs/faqs/reviewing-highlights) was the reference for daily review's local history and adjustable intervals. [Obsidian's backlinks](https://obsidian.md/help/plugins/backlinks) were the reference for unlinked mentions: suggestions are offered, and explicit references stay the authority. Physical-device, signing, cross-platform installer and store gates are unchanged and listed under *Next*.
 
 ## Later
 

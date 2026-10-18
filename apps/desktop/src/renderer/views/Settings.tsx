@@ -1,12 +1,14 @@
 import type { ClientScope, ItemType, Rule, SyncResult } from '@enve-memory/core';
 import type { ImportResult } from '@enve-memory/importers';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useEffect, useRef, useState } from 'react';
 import type { AiStatus, ImportKind, PairResult, ThemeMode } from '../../shared/ipc.ts';
 import { call, errorMessage, useLive } from '../lib/api.ts';
 import { TYPE_LABELS, formatBytes, formatDateTime, relativeTime } from '../lib/format.ts';
 import { type SettingsSection, useApp } from '../context.ts';
 import { CopyButton, Empty, Icon, ProjectSelect, Toggle, useFeedback } from '../ui.tsx';
 import { VaultSettings } from './Vault.tsx';
+
+const EnveHighlightsImport = lazy(() => import('./EnveImport.tsx').then((module) => ({ default: module.EnveHighlightsImport })));
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'library', label: 'Library' },
@@ -722,6 +724,9 @@ function ImportSection() {
           </button>
         </Row>
       ))}
+      <Suspense fallback={<p className="muted small" role="status">Loading…</p>}>
+        <EnveHighlightsImport project={project} disabled={busy !== null} />
+      </Suspense>
       {result && (
         <div className="token-once" role="status">
           <p>

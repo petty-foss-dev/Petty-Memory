@@ -1,5 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { ActivityService } from './activity.ts';
+import { ActionService } from './actions.ts';
+import { ConversationService } from './conversations.ts';
+import { ReviewService } from './review.ts';
+import { InsightService } from './insights.ts';
 import { BackupService } from './backups.ts';
 import { ClientService } from './clients.ts';
 import { FileService } from './files.ts';
@@ -67,6 +71,10 @@ export class EnveMemory {
   readonly views: ViewService;
   readonly templates: TemplateService;
   readonly organizer: OrganizerService;
+  readonly actions: ActionService;
+  readonly chats: ConversationService;
+  readonly review: ReviewService;
+  readonly insights: InsightService;
   private readonly db: DatabaseSync;
   private readonly ctx: Context;
 
@@ -111,6 +119,10 @@ export class EnveMemory {
     this.views = new ViewService(this.ctx, this.items, this.projects);
     this.templates = new TemplateService(this.ctx, this.items, this.projects);
     this.organizer = new OrganizerService(this.ctx, this.editor);
+    this.actions = new ActionService(this.ctx, this.items, this.tasks, this.projects);
+    this.chats = new ConversationService(this.ctx, this.items, this.projects);
+    this.review = new ReviewService(this.ctx, this.items, this.projects);
+    this.insights = new InsightService(this.ctx, this.items, this.editor);
   }
 
   get actor(): string {

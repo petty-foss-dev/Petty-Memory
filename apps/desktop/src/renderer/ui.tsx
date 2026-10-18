@@ -59,6 +59,9 @@ const PATHS = {
   template: 'M5 4h10l4 4v12H5zM9 9h3M9 13h6M9 17h6M15 4v4h4',
   mic: 'M9 6a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6',
   stop: 'M7 7h10v10H7z',
+  review: 'M4 8h12v12H4zM8 4h12v12M7.5 14l2 2 3.5-4',
+  merge: 'M6 4v5a5 5 0 0 0 5 5h7M6 20v-5M15 11l3 3-3 3',
+  text: 'M4 6h16M4 12h10M4 18h13',
 } as const;
 
 export type IconName = keyof typeof PATHS;

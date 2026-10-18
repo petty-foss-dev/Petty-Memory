@@ -6,10 +6,10 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type ParseArgsConfig, parseArgs } from 'node:util';
 import { EnveMemory, MemoryError, type EditProposal, type EditorCommand, type ItemPresentation, type RuleConditions, type SavedViewInput, type Settings, defaultHome, listBackups, pathsFor, restoreBackup } from '@enve-memory/core';
-import { AiError, type AiProvider, PROVIDERS, PROVIDER_IDS, ask, createProvider, enrichItem, enrichWorker, envKeys, isProviderId, organizeWorker, proposeEdit, providerFor } from '@enve-memory/ai';
+import { AiError, type AiProvider, PROVIDERS, PROVIDER_IDS, ask, chat, createProvider, enrichItem, enrichWorker, envKeys, isProviderId, organizeWorker, proposeEdit, providerFor } from '@enve-memory/ai';
 import { attachLocalEmbedder, indexWorker } from '@enve-memory/embeddings';
-import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder } from '@enve-memory/importers';
-import { ingestItem, processPending } from '@enve-memory/ingestion';
+import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder, importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
+import { extractImageText, ingestItem, processPending } from '@enve-memory/ingestion';
 import { DEFAULT_PORT, RemoteSyncClient, createApiServer, lanUrls, pairingLink } from '@enve-memory/api';
 import { SERVER_NAME, serveMemoryOverStdio } from '@enve-memory/mcp';
 import pkg from '../package.json' with { type: 'json' };
@@ -45,6 +45,13 @@ Projects
   decide <project> <text…>     Record a decision     [--reason] [--supersedes id]…
 
 Organize
+  conversations               List explicitly saved AI chats
+  conversations show <id>     Read a saved chat
+  conversations save <file>   Save a chat JSON definition (- reads stdin)
+  conversations archive <id> --yes  Archive a saved chat
+  review                      Due knowledge cards  [-p project] [--limit]
+  review schedule <id> --days 1|7|30  Choose when to see an item again
+  insights <id>               Suggested mentions, connections and duplicates (use --json)
   views                        List saved searches
   views create <name…>         Save a dynamic view  [--query] [-p project] [--type] [-t tag] [--status] [--inbox]
                                [--pinned] [--intent] [--review] [--attention] [--reminders] [--unopened days]
@@ -107,12 +114,18 @@ AI (optional; bring your own provider)
   ai edit <root-id> <request…> Preview a proposed subtree edit as JSON; no changes applied
   ai apply <proposal.json>    Apply a reviewed proposal (- reads stdin); stale proposals are rejected
   ai undo <receipt.json>      Undo an applied proposal using its saved undo receipt (- reads stdin)
+  ai actions <root-id> <request…>  Preview tasks, tags, reminders or a brief; no writes
+  ai actions-apply <file>     Apply reviewed actions  [--exclude operation-id]…
+  ai actions-undo <file>      Undo an action receipt, refusing newer work
+  ai organize <request…>     Preview topic organization with optional semantic suggestions
 
 Bring things in
   import bookmarks <file.html> Browser bookmark export; folders become tags  [-p project] [--archive fetches every page]
   import markdown <folder>     A folder of Markdown notes or an Obsidian vault  [-p project]
   import csv <file.csv>        Bookmark CSV (Raindrop, Pinboard, spreadsheets)  [-p project]
   import enve <export-folder>  Restore a Petty Memory export, keeping ids and dates
+  import highlights <file>     Enve Book Player JSON/Markdown annotations  [-p project] [--preview]
+  ocr <attachment-id>          Extract English text locally; does not save a note
 
 Automations
   rules                        List rules
@@ -206,6 +219,8 @@ const { values: opts, positionals } = parseCommandLine({
     query: { type: 'string' },
     inbox: { type: 'boolean' },
     date: { type: 'string' },
+    days: { type: 'string' },
+    preview: { type: 'boolean' },
     exclude: { type: 'string', multiple: true },
     expires: { type: 'string' },
     yes: { type: 'boolean' },
@@ -255,6 +270,49 @@ function recoveryMessage(result: { restored: number; missingFiles?: { filename: 
 
 async function run(memory: EnveMemory): Promise<void> {
   switch (command) {
+    case 'conversations': {
+      const action = rest[0] ?? 'list';
+      if (action === 'list') {
+        const items = memory.chats.list();
+        return emit(items, items.map((item) => `${item.title}\n    ${item.id}`).join('\n') || 'No saved conversations. Save explicitly from AI chat.');
+      }
+      if (action === 'show') {
+        const item = memory.chats.get(arg(1, 'id'));
+        return emit(item, item.messages.map((message) => `${message.role}: ${message.content}`).join('\n\n'));
+      }
+      if (action === 'save') {
+        const file = arg(1, 'file');
+        const input = JSON.parse(readFileSync(file === '-' ? 0 : resolve(file), 'utf8'));
+        const item = memory.chats.save(input);
+        return emit(item, `Saved ${item.title}\n    ${item.id}`);
+      }
+      if (action === 'archive') {
+        if (!opts.yes) throw new UsageError('Use --yes to archive this saved conversation.');
+        const item = memory.chats.archive(arg(1, 'id'));
+        return emit(item, 'Archived the saved conversation. Its history remains available.');
+      }
+      throw new UsageError('Usage: conversations [list|show|save|archive]');
+    }
+    case 'review': {
+      if (rest[0] === 'schedule') {
+        const item = memory.review.schedule(arg(1, 'id'), Number(opts.days));
+        return emit(item, `Scheduled ${item.title} for review in ${opts.days} days.`);
+      }
+      if (rest.length) throw new UsageError('Usage: review [-p project] [--limit] | review schedule <id> --days N');
+      const cards = memory.review.queue({ limit: limit(), project: opts.project });
+      return emit(cards, cards.map((card) => `${format.itemLine(card.item)}\n    ${card.reason}`).join('\n') || 'Nothing due for review.');
+    }
+    case 'insights': {
+      const result = memory.insights.forItem(arg(0, 'id'));
+      return emit(result, ['mentions', 'related', 'duplicates'].map((kind) => {
+        const entries = result[kind as 'mentions' | 'related' | 'duplicates'];
+        return `${kind}:\n${entries.map((entry) => `  ${entry.title} (${entry.id}) — ${entry.reason}`).join('\n') || '  None.'}`;
+      }).join('\n\n'));
+    }
+    case 'ocr': {
+      const result = await extractImageText(memory, arg(0, 'attachment-id'));
+      return emit(result, result.text);
+    }
     case 'views': {
       const action = rest[0] ?? 'list';
       if (action === 'list') {
@@ -565,12 +623,17 @@ async function run(memory: EnveMemory): Promise<void> {
     case 'import': {
       const [kind] = rest;
       const source = resolve(arg(1, 'path'));
+      if (kind === 'highlights' && opts.preview) {
+        const preview = previewEnveHighlights(readFileSync(source, 'utf8'));
+        return emit(preview, `${preview.format}: ${preview.entries.length} passages, ${preview.skipped} duplicates in the file. No notes saved.`);
+      }
       const result = kind === 'bookmarks' ? importBookmarks(memory, readFileSync(source, 'utf8'), { project: opts.project, archive: opts.archive })
         : kind === 'markdown' ? importMarkdownFolder(memory, source, { project: opts.project })
         : kind === 'csv' ? importCsv(memory, readFileSync(source, 'utf8'), { project: opts.project })
         : kind === 'enve' ? importEnveExport(memory, source)
+        : kind === 'highlights' ? importEnveHighlights(memory, readFileSync(source, 'utf8'), { project: opts.project })
         : null;
-      if (!result) throw new UsageError('Usage: import bookmarks|markdown|csv|enve <path>');
+      if (!result) throw new UsageError('Usage: import bookmarks|markdown|csv|enve|highlights <path>');
       if (opts.archive) await processPending(memory, { limit: 1000 });
       const failures = result.failed.slice(0, 10).map((f) => `  ${f.source}: ${f.error}`).join('\n');
       return emit(result, `Imported ${result.created}, skipped ${result.skipped} already here${result.failed.length ? `, ${result.failed.length} failed:\n${failures}` : '.'}`);
@@ -668,6 +731,29 @@ async function runAi(memory: EnveMemory): Promise<void> {
   switch (sub) {
     case undefined:
       break;
+    case 'actions': {
+      const result = await chat(memory, requireProvider(memory), { mode: 'actions', rootId: arg(1, 'root-id'), messages: [{ role: 'user', content: text(2, 'request') }] });
+      return emit(result.kind === 'actions' ? result.proposal : result, JSON.stringify(result, null, 2));
+    }
+    case 'actions-apply': {
+      const file = arg(1, 'file');
+      const value = JSON.parse(readFileSync(file === '-' ? 0 : resolve(file), 'utf8'));
+      const proposal = value.proposal ?? value;
+      const includeIds = opts.exclude ? proposal.operations.filter((op: { id: string }) => !opts.exclude!.includes(op.id)).map((op: { id: string }) => op.id) : undefined;
+      const result = memory.actions.apply(proposal, includeIds);
+      return emit(result, `Created ${result.createdIds.length} items and updated ${result.updatedIds.length}. Use --json to keep the undo receipt.`);
+    }
+    case 'actions-undo': {
+      const file = arg(1, 'file');
+      const value = JSON.parse(readFileSync(file === '-' ? 0 : resolve(file), 'utf8'));
+      const result = memory.actions.undo(value.undo ?? value);
+      return emit(result, recoveryMessage(result));
+    }
+    case 'organize': {
+      attachLocalEmbedder(memory);
+      const result = await chat(memory, requireProvider(memory), { mode: 'organize', messages: [{ role: 'user', content: text(1, 'request') }] });
+      return emit(result.kind === 'organization' ? result.proposal : result, JSON.stringify(result, null, 2));
+    }
     case 'edit': {
       const proposal = await proposeEdit(memory, requireProvider(memory), { rootId: arg(1, 'root-id'), instruction: text(2, 'request') });
       return emit(proposal, JSON.stringify(proposal, null, 2));

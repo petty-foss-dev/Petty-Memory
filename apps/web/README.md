@@ -33,13 +33,18 @@ The browser never creates credentials. Make a token on the machine that holds th
 petty-memory --home ~/em-demo clients add "Browser" --scope read,write
 ```
 
-The token stays in the tab's memory only; reloading the page or choosing Disconnect forgets it. A `read` token can browse and search; `write` is needed to edit, run AI edits and create shares. To open encrypted secret notes, create a separate token that adds the `secrets` scope (`--scope read,write,secrets`). Ordinary tokens never gain it.
+The token stays in the tab's memory only; reloading the page or choosing Disconnect forgets it. A `read` token can browse, search, read saved chats and see what's due for review; `write` is needed to edit, run AI chat changes, save chats, reschedule review, merge, import, extract image text and create shares. To open encrypted secret notes, create a separate token that adds the `secrets` scope (`--scope read,write,secrets`). Ordinary tokens never gain it.
 
 The same server also accepts other libraries' server sync with a `sync`-scoped token (see [SYNC.md](../../docs/SYNC.md#syncing-through-a-server)). The browser itself never uses that scope.
 
 ## What it does
 
-- **AI chat:** cited questions and follow-ups, selected-branch edit proposals and natural-language topic organization across projects. Review the proposed hierarchy and carried branches, apply a selection and undo safely. Web Speech dictation fills the draft on supporting browsers, with system dictation guidance elsewhere; sending and applying are explicit. The host supplies the AI provider, and the conversation stays in this tab's memory. [Guide and limits](../../docs/AI_CHAT.md).
+- **AI chat:** cited questions and follow-ups, selected-branch edit proposals, suggested actions and natural-language topic organization across projects. Review the proposed hierarchy and carried branches, apply a selection and undo safely; notes found by meaning are marked Suggested. Web Speech dictation fills the draft on supporting browsers, with system dictation guidance elsewhere; sending and applying are explicit. The host supplies the AI provider. A conversation stays in this tab's memory unless you press Save chat, which stores it as an ordinary note; Saved chats searches, reopens and archives them, and Save as note keeps a single answer. [Guide and limits](../../docs/AI_CHAT.md).
+- **Capture & import:** write or dictate a note, and preview and import Enve Book Player highlight exports (JSON or Markdown, up to 2 MB). Passages already imported are skipped.
+- **Review:** due knowledge to revisit; choose Tomorrow, Next week, Next month or a number of days. No background job or notification.
+- **Suggested connections:** an item's Find connections lists unlinked mentions, related notes and possible duplicates without AI. Connect, or merge a duplicate after a preview; the merged note is archived with its files, and Undo reverses it.
+- **Image text:** Extract text on an image item is read by the host with bundled English Tesseract, not in the browser and not by the AI provider. Correct the draft, then save it as a note; the image is unchanged.
+- **Getting started:** a dismissible checklist above the outline for write tokens in libraries with 20 or fewer items. [Everyday workflows](../../docs/POWER_FEATURES.md).
 - **Outline:** paged nested tree with inline creation (Enter to add the next line), Add child / Add below, indent and outdent (Tab / Shift+Tab), move up and down (Alt+↑ / Alt+↓), Move to… with a search picker, arrow-key navigation and expand/collapse.
 - **Editing:** plain title and text, no formatting syntax needed. Drafts survive background refreshes, and a failed save keeps them.
 - **Organize:** show an item as text, a heading or a section break; attention levels; review marks; pins.

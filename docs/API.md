@@ -20,7 +20,7 @@ Browser origins are restricted. Extension origins (`chrome-extension:`, `moz-ext
 
 Errors are `{"error": {"code", "message"}}` with the status: `401 unauthorized`, `403 insufficient_scope | forbidden_origin | forbidden_host`, `400 invalid | invalid_json`, `404 not_found`, `409 conflict | in_progress`, `413 too_large`, `423 locked`.
 
-**Safe retries:** send `Idempotency-Key: <1–128 chars>` on any write. Repeating a key within 24 hours (per client) returns the original response with `Idempotent-Replayed: true` instead of writing again. `POST /shares` returns its public token only once, so a replay gets `409 conflict`; if that response was lost, revoke the share and create a new one. `POST /ai/chat` is a read-only preview that bypasses this replay cache so session conversations are not retained. Retrying a chat invokes the provider again.
+**Safe retries:** send `Idempotency-Key: <1–128 chars>` on a write. Repeating a key within 24 hours (per client) returns the original response with `Idempotent-Replayed: true` instead of writing again. `POST /shares` returns its public token only once, so a replay gets `409 conflict`; if that response was lost, revoke the share and create a new one. Chat, OCR, highlight-import previews and merge previews bypass this cache: neither unsaved messages nor previewed material are retained in cached responses. Retrying a preview runs it again. Reviewed Apply, Undo, imports and explicit conversation saves use normal write replay protection.
 
 ## Endpoints (prefix `/api/v1`)
 
@@ -28,6 +28,20 @@ Errors are `{"error": {"code", "message"}}` with the status: `401 unauthorized`,
 |---|---|---|
 | `GET /status` | none | `{name: "enve-memory", version, api: 1}` |
 | `GET /whoami` | any token | The calling client: name, scopes, last used |
+| `GET /conversations?query=` | read | Newest 100 matching saved chats; keyword search covers all saved chats. |
+| `GET /conversations/:id` | read | Saved messages and context; saving is opt-in. |
+| `POST /conversations` | write | `{id?,title?,mode,project?,rootId?,query?,messages}`. Create or update an ordinary transcript note, at most 100 messages / 200,000 characters. Modes: ask, edit, organize, actions. |
+| `DELETE /conversations/:id` | write | Archive a saved chat; its ordinary note can be restored. |
+| `GET /review?limit=&project=` | read | Due knowledge cards; default 10, maximum 100. |
+| `POST /review/:id` | write | `{days}` (whole days 1–3650), schedule next review and record bounded history. |
+| `GET /items/:id/insights` | read | Non-AI mentions, related notes, possible duplicates and scanned/total counts. |
+| `POST /insights/merge/preview` | read | `{sourceId,targetId}` → hash-bound proposal with merged text, child and attachment counts. |
+| `POST /insights/merge` | write | `{proposal}` → editor action; archives source, keeps its files, moves children. Existing editor Undo/Redo routes apply. |
+| `POST /capture/ocr` | read + write | `{attachmentId}` → `{text,engine}` without saving. Bundled English Tesseract on the host, one job at a time, 45-second timeout; image ≤20 MiB and 25 million pixels. |
+| `POST /imports/enve-highlights/preview` | write | `{data}` → parsed JSON/Markdown passages; no content saved. |
+| `POST /imports/enve-highlights` | write | `{data,project?}` → `{created,skipped,failed}`. Each passage imported independently; repeats skip existing identities. Export ≤2 MiB, at most 1000 entries. These two endpoints allow JSON escaping overhead (up to 12 MiB + 1024 bytes); an explicitly configured `maxJsonBytes` still takes precedence. |
+| `POST /ai/actions/apply` | write | `{proposal,includeIds?}` → created/updated IDs and guarded Undo receipt. Atomic selection, stale scope refused. |
+| `POST /ai/actions/undo` | write | `{receipt}` → `{restored}`. Newer work blocks Undo. |
 | `GET /views`, `GET /views/:id` | read | Named view definitions: `{id, name, query, filter, createdAt, updatedAt}` |
 | `POST /views`, `PATCH /views/:id` | write | `{name, query?, filter?}`. PATCH replaces the definition; omitted filters reset. Whitelisted filters only, stable project IDs. |
 | `GET /views/:id/items?before=&limit=` | read | `{items, next}`. Active ordinary matches, ordered by changed time and ID. `next` is the next `before` cursor; maximum page size 200. |
@@ -101,7 +115,7 @@ Completion has one authority per item: a task's status for tasks (checking sets 
 | Method & path | Scope | Notes |
 |---|---|---|
 | `GET /ai/status` | read | `{configured, provider, label, model, cloud}`; no keys |
-| `POST /ai/chat` | read, plus write for edit/organize | `{mode: ask\|edit\|organize, messages: [{role: user\|assistant, content}], project?, rootId?}` → `{kind: answer, answer}` / `{kind: proposal, proposal}` / `{kind: organization, proposal}` |
+| `POST /ai/chat` | read, plus write for edit/organize/actions | `{mode: ask\|edit\|organize\|actions, messages: [{role: user\|assistant, content}], project?, rootId?, query?}` → answer, edit, organization or actions proposal. Actions requires exactly one of rootId or query; project limits topics only. |
 | `POST /ai/organize/apply` | write | `{proposal, includeIds?}` → `{rootId, moved, actionId, undo}`; one atomic editor action |
 | `POST /ai/organize/undo` | write | `{receipt}` → editor action result; refused after newer destination changes |
 

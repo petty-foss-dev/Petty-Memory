@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { actorInfo, displayTitle, dueInfo, formatReminder, snippetParts } from '../src/renderer/lib/format.ts';
+import { actorInfo, displayTitle, dueInfo, formatReminder, providedSourceLink, snippetParts } from '../src/renderer/lib/format.ts';
+
+test('provided book links allow web and Enve sources without executing other schemes or carrying credentials', () => {
+  assert.equal(providedSourceLink('enve://book/example?position=0.2'), 'enve://book/example?position=0.2');
+  assert.equal(providedSourceLink('https://example.test/passage'), 'https://example.test/passage');
+  for (const url of ['javascript:alert(1)', 'file:///tmp/notes', 'data:text/plain,hello', 'https://user:password@example.test/', 'enve://user:password@book/1', '', null, {}]) {
+    assert.equal(providedSourceLink(url), null);
+  }
+});
 
 test('search snippets split into highlighted and plain parts', () => {
   assert.deepEqual(snippetParts('the [rolling] code [replay] attack'), [

@@ -33,6 +33,7 @@ export interface Dictation {
 }
 
 export const DICTATION_NOTE = 'Your browser or system speech service turns speech into text and may send the audio off this device. Dictation only fills in the message; nothing is sent until you press Send.';
+export const NOTE_DICTATION_NOTE = 'Your browser or system speech service turns speech into text and may send the audio off this device. Dictation only fills in the note; nothing is saved until you press Save.';
 
 export function speechRecognizer(scope: object): RecognizerConstructor | null {
   const { SpeechRecognition, webkitSpeechRecognition } = scope as { SpeechRecognition?: RecognizerConstructor; webkitSpeechRecognition?: RecognizerConstructor };
@@ -137,9 +138,9 @@ export function appendDictation(draft: string, text: string): string {
   return /\s$/.test(draft) ? `${draft}${text}` : `${draft} ${text}`;
 }
 
-export function systemDictationHelp(platform: string): string {
-  if (platform === 'darwin') return 'Use macOS Dictation instead: click in the message and press your Dictation shortcut (System Settings → Keyboard → Dictation).';
-  if (platform === 'win32') return 'Use Windows voice typing instead: click in the message and press Windows key + H.';
-  if (platform === 'linux') return 'Use your desktop’s dictation or voice typing tool instead, with the message box focused.';
-  return 'Use your device’s own dictation instead, such as the microphone key on its keyboard, with the message box focused.';
+export function systemDictationHelp(platform: string, field = 'message'): string {
+  if (platform === 'darwin') return `Use macOS Dictation instead: click in the ${field} and press your Dictation shortcut (System Settings → Keyboard → Dictation).`;
+  if (platform === 'win32') return `Use Windows voice typing instead: click in the ${field} and press Windows key + H.`;
+  if (platform === 'linux') return `Use your desktop’s dictation or voice typing tool instead, with the ${field} box focused.`;
+  return `Use your device’s own dictation instead, such as the microphone key on its keyboard, with the ${field} box focused.`;
 }

@@ -48,6 +48,18 @@ struct OrganizationReviewSheet: View {
                     Text("Moving a note brings everything inside it along. Text, tags, files and project filing stay as they are; only the outline changes. Untick anything that doesn't belong.")
                         .font(HearthFont.footnote)
                         .foregroundStyle(hearth.textSecondary)
+                    if proposal.suggestedCount > 0 {
+                        Label {
+                            Text(proposal.suggestedCount == 1
+                                 ? "1 note is a suggestion: it doesn't contain “\(proposal.query)” but seems related in meaning. Related suggestions come from a limited search, so check it before moving."
+                                 : "\(proposal.suggestedCount) notes are suggestions: they don't contain “\(proposal.query)” but seem related in meaning. Related suggestions come from a limited search, so check them before moving.")
+                        } icon: {
+                            Image(systemName: "sparkle.magnifyingglass")
+                        }
+                        .font(HearthFont.footnote)
+                        .foregroundStyle(hearth.textSecondary)
+                        .accessibilityIdentifier("OrganizationSuggestedNote")
+                    }
                 }
                 if let error { ErrorBanner(message: error) }
                 if result == nil { outline }
@@ -232,6 +244,11 @@ private struct CandidateRow: View {
                 Text(verbatim: candidate.title.isEmpty ? "Untitled note" : candidate.title)
                     .font(HearthFont.subheadline)
                     .lineLimit(2)
+                if candidate.isSuggested {
+                    Label("Suggested · related in meaning", systemImage: "sparkle.magnifyingglass")
+                        .font(HearthFont.caption.weight(.medium))
+                        .foregroundStyle(hearth.accentText)
+                }
                 if !candidate.body.isEmpty {
                     Text(verbatim: candidate.body)
                         .font(HearthFont.caption)

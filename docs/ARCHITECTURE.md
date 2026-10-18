@@ -82,6 +82,14 @@ The breadth-first parity layer ([DAFTAK_PARITY_PLAN.md](DAFTAK_PARITY_PLAN.md#cu
 
 Decisions, secret notes and archived items stay outside AI edit scopes; MCP has no vault, share, AI-apply or sync tools.
 
+## Daily knowledge workflows
+
+`chats`, `review`, `insights` and `actions` are core services. Saved chats and review schedules use versioned ordinary-note metadata, with normal history, export and sync. Conversations are saved only on request; their readable body is the transcript. Action scopes, review and connection discovery exclude saved chats and workflow definitions as well as secrets and decisions.
+
+AI action previews use a bounded source snapshot and stable references, then core validates every operation. Selected actions apply atomically, with generated tasks and briefs excluded from capture automations and automatic enrichment. Apply records an immutable result/Undo receipt in the same transaction; retries cannot authorize Undo over newer edits. Duplicate merges use the existing editor journal, retaining source attachments on the archived original and moving children to the surviving note.
+
+Topic organization preserves the complete keyword set and may add up to 50 labeled semantic suggestions within its existing scope limits. Optional semantic failures leave a clearly identified keyword-only proposal. Image OCR is separate from the LLM: bundled English Tesseract runs on the library host, while native photo capture uses Vision on the iPhone. Neither extraction writes a note until the person saves the reviewed text. Highlight imports validate chosen files and create provenance-bearing ordinary notes; repeated identities are skipped. See [POWER_FEATURES.md](POWER_FEATURES.md) for workflows and limits.
+
 ## Automations
 
 `RuleService` (core) runs every enabled rule when an item is created and again when its source is archived, so the title, domain and text are known. Conditions (all must hold): item types, link domains (subdomains included), keywords in the title, note or archived text, and the saving client (`mcp:`, `api:Chrome`, …). Actions: add tags, and file into a project if the item has none. Because core applies rules, every client benefits: MCP, the API, the CLI and the desktop app. Actions are attributed to `rule:<name>`. Rules are device-local configuration; they aren't synced.

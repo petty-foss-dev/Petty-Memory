@@ -38,6 +38,16 @@ export function presentationOf(item) {
 
 export const isSecret = (item) => item?.metadata?.secret === true;
 
+export function providedSourceLink(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:', 'enve:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 // Keep raw HTML inert and replace remote images with links to avoid tracking requests.
 export function renderText(text, reference) {
   const out = h('div', { class: 'prose' });
