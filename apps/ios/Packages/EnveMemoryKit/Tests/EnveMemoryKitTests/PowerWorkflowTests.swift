@@ -56,8 +56,8 @@ private func exchange(_ question: String, _ answer: String) -> [ChatMessage] {
     @Test func answersBecomeNotesWithStableReferences() {
         let a = "01930000-0000-7000-8000-0000000000a1", b = "01930000-0000-7000-8000-0000000000b2"
         let answer = CitedAnswer(answer: "Use a reed switch [1] wired to the relay [2]. See [9].", sources: [
-            CitedAnswer.Source(n: 1, id: a, title: "Garage sensor", url: nil, type: .note),
-            CitedAnswer.Source(n: 2, id: b, title: "", url: "https://example.com/relay", type: .bookmark),
+            CitedAnswer.Source(n: 1, id: a, title: "Garage sensor", url: nil, type: .note, locator: nil),
+            CitedAnswer.Source(n: 2, id: b, title: "", url: "https://example.com/relay", type: .bookmark, locator: nil),
         ])
         let body = answer.noteBody
         #expect(body.hasPrefix("Use a reed switch [[item:\(a)|Garage sensor]] wired to the relay [[item:\(b)|https://example.com/relay]]. See [9]."))

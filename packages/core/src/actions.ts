@@ -46,13 +46,13 @@ interface RecordedAction {
 const MAX_ITEMS = 150;
 const MAX_OPERATIONS = 50;
 const DEFINITIONS = `WITH RECURSIVE definitions(id) AS (
-  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL
+  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
   UNION SELECT i.id FROM items i JOIN definitions d ON i.parent_id = d.id
 )`;
 const ORDINARY = `i.archived_at IS NULL AND i.type != 'decision'
   AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0
   AND json_extract(i.metadata, '$.savedView') IS NULL
-  AND json_extract(i.metadata, '$.conversation') IS NULL
+  AND json_extract(i.metadata, '$.conversation') IS NULL AND coalesce(json_extract(i.metadata, '$.knowledgeDefinition'), 0) = 0
   AND i.id NOT IN (SELECT id FROM definitions)`;
 
 export class ActionService {

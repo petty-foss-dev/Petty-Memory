@@ -8,7 +8,21 @@ export type SettingsSection =
   | 'library' | 'mcp' | 'devices' | 'search' | 'ai' | 'automations' | 'sync' | 'vault' | 'sharing' | 'import' | 'backups' | 'export'
   | 'appearance' | 'about';
 
+export type KnowledgeSection = 'recipes' | 'collections' | 'research' | 'sources' | 'freshness' | 'preferences';
+
+/** Research locators: a PDF page and quote, or an audio time in seconds, optionally inside one transcript. */
+export interface KnowledgeRoute {
+  view: 'knowledge';
+  section?: KnowledgeSection;
+  sourceId?: string;
+  transcriptId?: string;
+  page?: number;
+  start?: number;
+  quote?: string;
+}
+
 export type Route =
+  | KnowledgeRoute
   | { view: 'home' }
   | { view: 'inbox' }
   | { view: 'library'; type?: LibraryType }

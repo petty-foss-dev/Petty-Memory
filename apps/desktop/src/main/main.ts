@@ -16,6 +16,7 @@ import { PrefsFile } from './prefs.ts';
 import { REMOTE_TOKEN } from './remote.ts';
 import { SecretStore } from './secrets.ts';
 import { displayTitle } from '../shared/text.ts';
+import { TRANSCRIPTION_KEY } from '../shared/knowledge.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const devServer = process.env.VITE_DEV_SERVER_URL;
@@ -257,8 +258,14 @@ function harden(): void {
     contents.on('will-attach-webview', (event) => event.preventDefault());
   });
   const allowed = new Set(['clipboard-sanitized-write']);
-  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(allowed.has(permission)));
-  session.defaultSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission));
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const audio = permission === 'media' && details.isMainFrame && isAppUrl(contents.getURL()) && isAppUrl(details.requestingUrl)
+      && 'mediaTypes' in details && details.mediaTypes?.length === 1 && details.mediaTypes[0] === 'audio';
+    callback(allowed.has(permission) || audio === true);
+  });
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) => allowed.has(permission)
+    || (permission === 'media' && contents !== null && details.isMainFrame && isAppUrl(contents.getURL())
+      && isAppUrl(details.requestingUrl ?? '') && details.mediaType === 'audio'));
 }
 
 async function start(): Promise<void> {
@@ -281,6 +288,7 @@ async function start(): Promise<void> {
         return undefined;
       }
     },
+    transcriptionKey: () => secrets.get(TRANSCRIPTION_KEY),
     remote: () => {
       const url = prefs.get('remoteUrl');
       if (!url) return null;

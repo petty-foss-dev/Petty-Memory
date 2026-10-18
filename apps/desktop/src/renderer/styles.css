@@ -3756,3 +3756,518 @@ button.outline-toggle:hover {
 .highlight-list p {
   margin: 2px 0 0;
 }
+
+/* Knowledge: workflows, collections, research, watched sources, information review and preferences */
+
+.knowledge-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.knowledge-section > .note {
+  margin: 0;
+}
+
+.knowledge-list,
+.collection-cards,
+.freshness-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.knowledge-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.knowledge-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.knowledge-card-head strong {
+  overflow-wrap: anywhere;
+}
+
+.knowledge-instruction {
+  margin: 0;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.preference-chooser {
+  margin: 0;
+}
+
+.preference-chooser .check {
+  align-items: flex-start;
+}
+
+.preference-chooser input {
+  margin-top: 4px;
+}
+
+.chat-preferences {
+  margin-bottom: 8px;
+}
+
+.collection-dialog {
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.collection-fields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.collection-fields > li {
+  border-bottom: 1px solid var(--border);
+}
+
+.collection-fields .field-row {
+  align-items: flex-end;
+  margin: 4px 0 8px;
+}
+
+.field-remove {
+  margin-bottom: 12px;
+}
+
+.collection-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.collection-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.collection-option input {
+  width: 10em;
+  padding: 4px 8px;
+}
+
+.collection-rule {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.collection-name {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 19px;
+  margin: 0;
+}
+
+.collection-toolbar {
+  margin: 8px 0;
+}
+
+.collection-group {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.collection-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.collection-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.collection-table th,
+.collection-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.collection-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+
+.collection-table tbody tr:last-child > * {
+  border-bottom: none;
+}
+
+.collection-table tbody th {
+  font-weight: 400;
+  min-width: 14em;
+}
+
+.collection-table input:not([type='checkbox']),
+.collection-table select {
+  width: 100%;
+  min-width: 8em;
+  padding: 4px 8px;
+}
+
+.collection-title {
+  overflow-wrap: anywhere;
+}
+
+.collection-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.collection-card-field {
+  flex-direction: column;
+}
+
+.collection-card-field input:not([type='checkbox']),
+.collection-card-field select {
+  padding: 4px 8px;
+}
+
+.kanban {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  align-items: flex-start;
+}
+
+.kanban-column {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.kanban-column h3 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kanban-column ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kanban-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.kanban-card select {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.research-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.research-sources {
+  position: sticky;
+  top: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.research-sources .mini-list button.active {
+  background: var(--ember-soft);
+}
+
+.research-workspace {
+  min-width: 0;
+}
+
+.research-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.research-record {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.research-pages {
+  margin: 8px 0;
+}
+
+.research-page-number {
+  width: 5.5em;
+  padding: 4px 8px;
+}
+
+.research-find {
+  margin-left: auto;
+}
+
+.research-matches {
+  margin-bottom: 12px;
+}
+
+.research-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.research-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.research-canvas canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: #fff;
+}
+
+.research-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.research-page-text {
+  max-height: 70vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  user-select: text;
+}
+
+.research-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--ember-soft);
+}
+
+.research-quote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--ember-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.research-audio audio,
+.research-record audio {
+  width: 100%;
+}
+
+.research-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.research-transcript,
+.research-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.research-transcript h3,
+.research-transcription h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.research-transcription {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.research-transcription p {
+  margin: 0;
+}
+
+.caption-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.transcript-cues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.transcript-cues li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.transcript-cues li:last-child {
+  border-bottom: none;
+}
+
+.transcript-cues li.playing {
+  background: var(--surface-2);
+}
+
+.transcript-cues li.focused {
+  box-shadow: inset 3px 0 0 var(--ember);
+}
+
+.transcript-cues li.chosen {
+  background: var(--ember-soft);
+}
+
+.transcript-cues.preview {
+  max-height: 30vh;
+}
+
+.cue-time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.watch-enabled {
+  margin-left: auto;
+}
+
+.watch-url {
+  overflow-wrap: anywhere;
+}
+
+.watch-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.watch-review details summary {
+  cursor: pointer;
+  color: var(--ember-text);
+}
+
+.freshness-days input {
+  width: 7em;
+}
+
+.freshness-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.freshness-scope .toolbar {
+  margin: 0;
+}
+
+.freshness-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.freshness-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .research-layout,
+  .research-page,
+  .freshness-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .research-sources {
+    position: static;
+    max-height: 30vh;
+  }
+}

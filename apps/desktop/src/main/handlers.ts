@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join } from 'node:path';
 import { AiError, PROVIDERS, type ProviderId, ask, chat, createProvider, enrichItem, isProviderId, proposeEdit } from '@enve-memory/ai';
-import { lanUrls, pairingLink } from '@enve-memory/api';
+import { invokeKnowledgeRequest, lanUrls, pairingLink } from '@enve-memory/api';
 import { localEmbeddingsSupported } from '@enve-memory/embeddings';
 import { type Item, type ItemFilter, MAX_SEALED_FILE_BYTES, MemoryError, SEALED_FILE_MIME, SEALED_FILE_NAME, pageCursor } from '@enve-memory/core';
 import {
@@ -22,6 +22,7 @@ import { type LaunchContext, claudeAddArgs, findExecutable, mcpLaunch, setupSnip
 import { REMOTE_TOKEN, remoteUrl } from './remote.ts';
 import type { PrefsFile } from './prefs.ts';
 import type { SecretStore } from './secrets.ts';
+import { TRANSCRIPTION_KEY, type TranscriptionStatus } from '../shared/knowledge.ts';
 
 export interface HandlerContext {
   library: Library;
@@ -104,7 +105,7 @@ export function createHandlers(ctx: HandlerContext): Handlers {
       providers: Object.entries(PROVIDERS).map(([id, info]) => ({
         id, label: info.label, baseUrl: info.baseUrl, needsKey: info.needsKey, defaultModel: info.defaultModel ?? null, cloud: CLOUD_PROVIDERS.has(id),
       })),
-      keys: secrets.names().filter((name) => name !== REMOTE_TOKEN),
+      keys: secrets.names().filter((name) => name !== REMOTE_TOKEN && name !== TRANSCRIPTION_KEY),
       encryptionAvailable: secrets.available,
       error: settings.aiProvider === 'none' ? null : library.aiError,
     };
@@ -130,6 +131,11 @@ export function createHandlers(ctx: HandlerContext): Handlers {
   });
 
   const launch = () => mcpLaunch(ctx.launch);
+  const transcriptionStatus = (): TranscriptionStatus => ({
+    configured: Boolean(memory().settings.get('transcriptionBaseUrl') && memory().settings.get('transcriptionModel')),
+    baseUrl: memory().settings.get('transcriptionBaseUrl'), model: memory().settings.get('transcriptionModel'),
+    hasKey: secrets.names().includes(TRANSCRIPTION_KEY), encryptionAvailable: secrets.available,
+  });
 
   const pick = async (options: Electron.OpenDialogOptions): Promise<string | null> => {
     const parent = ctx.parentWindow();
@@ -188,6 +194,51 @@ export function createHandlers(ctx: HandlerContext): Handlers {
   };
 
   return {
+    'knowledge.request': async (request) => {
+      const result = await invokeKnowledgeRequest(memory(), request, {
+        aiProvider: () => library.provider(), transcription: () => library.transcription(),
+        afterWrite: () => library.afterWrite(),
+      });
+      return result;
+    },
+    'research.file': (sourceId) => {
+      const item = memory().items.get(str(sourceId, 'Source'));
+      if (item.metadata.secret === true || item.archivedAt) throw new DesktopError('invalid', 'Choose an active, ordinary research source.');
+      const { attachment } = memory().files.primary(item.id);
+      const { data } = memory().files.readAttachment(attachment.id, { maxBytes: 32 * 1024 * 1024 });
+      if (attachment.mimeType !== 'application/pdf' && !attachment.mimeType.startsWith('audio/')) throw new DesktopError('invalid', 'Choose a PDF or audio source.');
+      return { data, filename: attachment.filename, mimeType: attachment.mimeType, sha256: attachment.sha256 };
+    },
+    'research.saveAudio': (data, filename, mimeType) => {
+      if (!(data instanceof Uint8Array) || data.byteLength === 0 || data.byteLength > 25 * 1024 * 1024) throw new DesktopError('invalid', 'Choose an audio recording up to 25 MB.');
+      const type = str(mimeType, 'Audio type').split(';')[0]!.toLowerCase();
+      if (!['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/flac', 'audio/webm'].includes(type)) throw new DesktopError('invalid', 'Choose MP3, M4A, WAV, Ogg, FLAC or WebM audio.');
+      return memory().files.save({ data, filename: str(filename, 'Filename'), mimeType: type }).item;
+    },
+    'research.transcriptionStatus': transcriptionStatus,
+    'research.configureTranscription': (input) => {
+      if (!input || typeof input !== 'object') throw new DesktopError('invalid', 'Choose a transcription endpoint and model.');
+      const baseUrl = str(input.baseUrl, 'Transcription URL').trim();
+      const model = str(input.model, 'Transcription model').trim();
+      if (baseUrl.length > 2000 || model.length > 200 || Boolean(baseUrl) !== Boolean(model)) throw new DesktopError('invalid', 'Provide both a transcription URL and model, or leave both blank to turn transcription off.');
+      if (baseUrl) {
+        let url: URL;
+        try { url = new URL(baseUrl); } catch { throw new DesktopError('invalid', 'Use an http or https transcription URL.'); }
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new DesktopError('invalid', 'Use an http or https transcription URL without embedded credentials, query or fragment.');
+      }
+      if (input.apiKey !== undefined) {
+        const key = str(input.apiKey, 'Transcription key').trim();
+        if (key.length > 4096) throw new DesktopError('invalid', 'The transcription key is too long.');
+        if (key) secrets.set(TRANSCRIPTION_KEY, key); else secrets.delete(TRANSCRIPTION_KEY);
+      }
+      memory().settings.set('transcriptionBaseUrl', baseUrl);
+      memory().settings.set('transcriptionModel', model);
+      return transcriptionStatus();
+    },
+    'sources.approveFolder': async (watchId) => {
+      const folder = await pick({ title: 'Approve a folder to watch for research files', properties: ['openDirectory'] });
+      return folder ? memory().sources.approveFolder(str(watchId, 'Watched source'), folder) : null;
+    },
     'app.info': (): AppInfo => {
       const m = memory();
       const stats = m.stats();

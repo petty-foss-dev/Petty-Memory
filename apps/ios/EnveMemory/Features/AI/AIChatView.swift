@@ -61,6 +61,9 @@ struct AIChatView: View {
     @State private var browsing = false
     @State private var resuming = false
     @State private var resumedInitial = false
+    /// Saved preferences without a project; organize requests across the library can use only these.
+    @State private var organizePreferences: [OrganizationPreference] = []
+    @State private var chosenPreferences: Set<String> = []
 
     /// The saved copy this conversation updates, and how many exchanges it held when saved.
     struct SavedChat {
@@ -179,6 +182,7 @@ struct AIChatView: View {
         }
         .onDisappear { dictation.stop() }
         .task(id: connection.isOnline) { await loadStatus() }
+        .task(id: PreferenceTrigger(mode: context.mode, isOnline: connection.isOnline)) { await loadPreferences() }
         .task {
             guard !resumedInitial, let savedConversationID else { return }
             resumedInitial = true
@@ -207,6 +211,10 @@ struct AIChatView: View {
         case .organize:
             help("Say which notes and how, for example “Organize all notes about gardening into a PARA system.” The AI finds every matching note across your library and proposes headings and a place for each. Moving a note brings the notes inside it along, and projects stay as they are. Nothing moves until you review and apply it.")
                 .accessibilityIdentifier("ChatOrganizeHelp")
+            PreferenceSelection(preferences: organizePreferences, selected: $chosenPreferences,
+                                explanation: "Tick saved preferences to send with your next request. Only ones without a project apply across the library; nothing is used unless you tick it.")
+                .disabled(pending != nil)
+                .accessibilityIdentifier("ChatOrganizePreferences")
         case .actions:
             help("The AI proposes tasks, tags, reminders and a short brief from the notes you choose or every note about a topic. You review each one; nothing changes until you apply it, and nothing is deleted.")
                 .accessibilityIdentifier("ChatActionsHelp")
@@ -417,6 +425,7 @@ struct AIChatView: View {
         // Dictation must be stopped first, so the draft is checked before it's sent.
         blocked == nil && status?.configured == true && pending == nil && !dictation.isListening && !resuming && !question.isEmpty
             && ChatRequest.length(question) <= ChatRequest.maxMessageLength && context.isReady
+            && (context.mode != .organize || !PreferenceSelection.tooLong(organizePreferences, chosenPreferences))
     }
 
     private var isDirty: Bool { turns.count != (saved?.turnCount ?? 0) }
@@ -437,7 +446,8 @@ struct AIChatView: View {
         guard canSend, let client = connection.privateClient else { return }
         let text = question
         let request = ChatRequest(mode: context.mode, history: turns.flatMap(\.messages), message: text,
-                                  project: context.requestProject, rootId: context.requestRoot, query: context.requestQuery)
+                                  project: context.requestProject, rootId: context.requestRoot, query: context.requestQuery,
+                                  preferences: organizePreferences.map(\.id).filter(chosenPreferences.contains))
         let conversation = conversation
         pending = text
         error = nil
@@ -574,6 +584,19 @@ struct AIChatView: View {
         omitted = 0
     }
 
+    private func loadPreferences() async {
+        guard context.mode == .organize, connection.isOnline, let client = connection.privateClient else { return }
+        do {
+            let global = try await client.send(.preferences(), as: [OrganizationPreference].self).filter(\.isGlobal)
+            organizePreferences = global
+            chosenPreferences.formIntersection(global.map(\.id))
+        } catch is CancellationError {
+            return
+        } catch {
+            connection.note(error)
+        }
+    }
+
     private func loadStatus() async {
         guard connection.isOnline, let client = connection.privateClient else { return }
         do {
@@ -586,6 +609,11 @@ struct AIChatView: View {
             statusError = error.localizedDescription
         }
     }
+}
+
+private struct PreferenceTrigger: Equatable {
+    let mode: ChatMode
+    let isOnline: Bool
 }
 
 struct ChatTurn: Identifiable {
@@ -706,17 +734,29 @@ private struct ReplyCard: View {
             if !answer.sources.isEmpty {
                 Overline("Sources")
                 ForEach(answer.sources, id: \.n) { source in
-                    Button { router.open(.item(source.id)) } label: {
-                        Label {
-                            Text(verbatim: "[\(source.n)] \(source.title.isEmpty ? (source.url ?? source.type.label) : source.title)")
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                        } icon: {
-                            Image(systemName: source.type.symbol)
+                    HStack(alignment: .firstTextBaseline, spacing: HearthSpacing.sm) {
+                        // A located source opens the original PDF page or recording moment; the note it came from stays one tap away.
+                        Button {
+                            router.open(source.locator.map { Route.research($0.location) } ?? .item(source.id))
+                        } label: {
+                            Label {
+                                Text(verbatim: "[\(source.n)] \(source.title.isEmpty ? (source.url ?? source.type.label) : source.title)\(Self.place(source.locator))")
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            } icon: {
+                                Image(systemName: source.locator?.kind == "audio" ? "waveform" : source.locator != nil ? "doc.richtext" : source.type.symbol)
+                            }
+                            .font(HearthFont.footnote)
                         }
-                        .font(HearthFont.footnote)
+                        .accessibilityIdentifier("ChatSource")
+                        if source.locator != nil {
+                            Spacer(minLength: 0)
+                            Button { router.open(.item(source.id)) } label: { Image(systemName: "note.text") }
+                                .font(HearthFont.footnote)
+                                .accessibilityLabel("Open the cited note")
+                                .accessibilityIdentifier("ChatSourceNote")
+                        }
                     }
-                    .accessibilityIdentifier("ChatSource")
                 }
             }
             Button(answerSaved ? "Saved as a note" : "Save as note", systemImage: answerSaved ? "checkmark" : "note.text.badge.plus", action: saveAnswer)
@@ -724,6 +764,13 @@ private struct ReplyCard: View {
                 .disabled(answerSaved || !canSaveAnswer)
                 .accessibilityIdentifier("ChatSaveAnswer")
         }
+    }
+
+    private static func place(_ locator: CitedAnswer.Locator?) -> String {
+        guard let locator else { return "" }
+        if locator.kind == "pdf", let page = locator.page { return " · p. \(page)" }
+        if locator.kind == "audio", let start = locator.start { return " · \(Timestamp.label(start))" }
+        return ""
     }
 
     private func proposed(_ proposal: EditProposal) -> some View {

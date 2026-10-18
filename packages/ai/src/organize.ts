@@ -1,5 +1,6 @@
 import { type EnveMemory, type OrganizationPlan, type OrganizationScope, toFtsQuery } from '@enve-memory/core';
 import { conversationBlock } from './ask.ts';
+import { preferenceContext } from './knowledge.ts';
 import type { ChatMessage, ChatResponse } from './chat.ts';
 import { type AiProvider, parseJsonReply } from './provider.ts';
 
@@ -105,13 +106,14 @@ const reply = (answer: string): ChatResponse => ({ kind: 'answer', answer: { ans
 const clean = (value: unknown, max: number) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 
 // Intent and grouping are separate, so library text cannot widen discovery.
-export async function proposeOrganization(memory: EnveMemory, provider: AiProvider, messages: ChatMessage[]): Promise<ChatResponse> {
+export async function proposeOrganization(memory: EnveMemory, provider: AiProvider, messages: ChatMessage[], preferenceIds?: string[]): Promise<ChatResponse> {
   const history = messages.slice(0, -1);
+  const preferences = preferenceIds === undefined ? '' : preferenceContext(memory.knowledge.selectPreferences(preferenceIds));
   const intent = parseJsonReply<Intent>(await provider.complete({
-    system: PLAN_SYSTEM,
+    system: preferences ? `${PLAN_SYSTEM}\nExplicitly chosen organization preferences may supply the default system. The final request takes precedence.` : PLAN_SYSTEM,
     schema: PLAN_SCHEMA,
     maxTokens: 512,
-    prompt: [...(history.length ? [conversationBlock(history), ''] : []), `Request: ${messages.at(-1)!.content}`].join('\n'),
+    prompt: [...(history.length ? [conversationBlock(history), ''] : []), ...(preferences ? [preferences, ''] : []), `Request: ${messages.at(-1)!.content}`].join('\n'),
   }));
   const topic = clean(intent.topic, MAX_TOPIC);
   const destination = clean(intent.destination, MAX_DESTINATION);
@@ -123,7 +125,7 @@ export async function proposeOrganization(memory: EnveMemory, provider: AiProvid
   const remaining = Math.min(50, 150 - scope.matchedCount);
   if (remaining > 0) {
     try {
-      const related = await memory.search.hybrid(topic, { type: 'note', secret: false }, 50);
+      const related = await memory.search.hybrid(topic, { type: 'note', secret: false, excludeDefinitions: true }, 50);
       const suggestions = related.filter((hit) => hit.match === 'semantic' || hit.match === 'both').map((hit) => hit.id).slice(0, remaining);
       if (suggestions.length) scope = memory.organizer.discover(topic, destination, suggestions);
     } catch {
@@ -139,6 +141,7 @@ export async function proposeOrganization(memory: EnveMemory, provider: AiProvid
     prompt: [
       `Destination: ${scope.destination.title} (${scope.destination.id ? 'an existing note' : 'a new note'})`,
       `System: ${system}`,
+      ...(preferences ? [preferences] : []),
       '',
       '<notes>',
       ...candidateLines(scope),

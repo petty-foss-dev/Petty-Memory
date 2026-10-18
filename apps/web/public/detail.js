@@ -2,6 +2,7 @@ import { can, del, enc, get, patch, post, query } from './api.js';
 import { clear, confirmDialog, empty, errorBox, field, h, loading, promptDialog, when } from './dom.js';
 import { applyEdit } from './edits.js';
 import { imageTextPanel, insightsPanel } from './insights.js';
+import { formatTime } from './knowledge-research.js';
 import { pickItem } from './picker.js';
 import { createShareForm } from './shares.js';
 import { displayTitle, isSecret, presentationOf, providedSourceLink, renderText } from './text.js';
@@ -141,6 +142,7 @@ export function createDetail(ctx) {
       header(state),
       h('p', { class: 'meta' }, [item.type, item.project?.name, `updated ${when(item.updatedAt)}`].filter(Boolean).join(' · ')),
       secret ? secretPanel(item, ctx) : contentSection(state),
+      secret || item.archivedAt ? null : researchPanel(item, ctx),
       images ? imageTextPanel(state, ctx) : null,
       secret ? null : presentationSection(state),
       secret ? null : workflowPanel(state, ctx),
@@ -451,6 +453,38 @@ export function createDetail(ctx) {
   }
 
   return { el, open, close, refresh, isDirty: () => Boolean(current?.dirty), currentId: () => current?.id ?? null };
+}
+
+/** Where a PDF, recording or research note opens in Research; null for anything else. Stored metadata is checked, not trusted. */
+function researchPanel(item, ctx) {
+  const research = item.metadata?.research;
+  const id = (value) => (typeof value === 'string' && value ? value : null);
+  const time = (value) => (Number.isFinite(value) && value >= 0 ? value : null);
+  const page = (value) => (Number.isInteger(value) && value > 0 ? value : null);
+  const open = (label, locator) => h('button', { type: 'button', class: 'btn small', onClick: () => ctx.openResearch(locator) }, label);
+  let content = null;
+  if (item.type === 'file' && (item.attachments ?? []).some((a) => a.mimeType === 'application/pdf')) {
+    content = [h('p', { class: 'hint' }, 'Read it page by page, find text, quote passages and review OCR. The original stays unchanged.'),
+      open('Open in PDF reader', { kind: 'pdf', sourceId: item.id })];
+  } else if (item.type === 'file' && (item.attachments ?? []).some((a) => a.mimeType.startsWith('audio/'))) {
+    content = [h('p', { class: 'hint' }, 'Play it, import captions as a timed transcript, and save passages.'),
+      open('Open player and transcripts', { kind: 'audio', sourceId: item.id })];
+  } else if (research?.version === 1 && item.type === 'note') {
+    if (research.kind === 'transcript' && id(research.sourceId)) {
+      content = [h('p', { class: 'hint' }, 'Timed transcript of ', referenceLink(research.sourceId, 'a recording', ctx.select), '.'),
+        open('Open with the recording', { kind: 'audio', sourceId: research.sourceId, transcriptId: item.id })];
+    } else if (research.kind === 'transcriptPassage' && id(research.audioId) && id(research.sourceId) && time(research.start) !== null) {
+      content = [h('p', { class: 'hint' }, `Passage at ${formatTime(research.start)}${time(research.end) !== null ? `–${formatTime(research.end)}` : ''} of `, referenceLink(research.sourceId, 'a transcript', ctx.select), '.'),
+        open(`Play from ${formatTime(research.start)}`, { kind: 'audio', sourceId: research.audioId, transcriptId: research.sourceId, start: research.start, end: time(research.end) ?? undefined })];
+    } else if (research.kind === 'pdfAnnotation' && id(research.sourceId) && page(research.page)) {
+      content = [h('p', { class: 'hint' }, `Quote from page ${research.page}${research.textSource === 'ocr' ? ' (reviewed OCR text)' : ''} of `, referenceLink(research.sourceId, 'a PDF', ctx.select), '.'),
+        open(`Open page ${research.page}`, { kind: 'pdf', sourceId: research.sourceId, page: research.page, sha256: id(research.sha256) ?? undefined, quote: typeof research.quote === 'string' ? research.quote : undefined })];
+    } else if (research.kind === 'pdfOcrPage' && id(research.sourceId) && page(research.page)) {
+      content = [h('p', { class: 'hint' }, `Reviewed OCR text of page ${research.page} of `, referenceLink(research.sourceId, 'a PDF', ctx.select), '.'),
+        open(`Open page ${research.page}`, { kind: 'pdf', sourceId: research.sourceId, page: research.page, sha256: id(research.sha256) ?? undefined })];
+    }
+  }
+  return content ? h('section', { class: 'panel' }, h('h2', null, 'Research'), content[0], h('div', { class: 'actions' }, content[1])) : null;
 }
 
 /** Shows an AI proposal in `out` with a checkbox per change, applies only the ticked ones, then offers the guarded undo. */

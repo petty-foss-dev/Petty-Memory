@@ -1,4 +1,4 @@
-import { type Context, ITEM_COLUMNS, ITEM_FROM, type ItemRow, toItem } from './context.ts';
+import { type Context, ITEM_COLUMNS, ITEM_FROM, type ItemRow, toSummaryItem } from './context.ts';
 import { invalid } from './errors.ts';
 import type { ItemService } from './items.ts';
 import { pathToRoot } from './placement.ts';
@@ -35,13 +35,13 @@ const DAY_MS = 86_400_000;
 const REVIEWABLE: readonly string[] = ['note', 'bookmark', 'file', 'image'];
 
 const TEMPLATE_MEMBERS = `WITH RECURSIVE template_members(id) AS (
-  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL
+  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
   UNION SELECT c.id FROM items c JOIN template_members m ON c.parent_id = m.id
 )`;
 // Tasks, decisions, secrets, saved views, saved conversations and template branches are never knowledge to revisit.
 const KNOWLEDGE = `i.type IN ('note', 'bookmark', 'file', 'image') AND i.archived_at IS NULL
   AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0 AND json_extract(i.metadata, '$.savedView') IS NULL
-  AND json_extract(i.metadata, '$.conversation') IS NULL AND i.id NOT IN (SELECT id FROM template_members)`;
+  AND json_extract(i.metadata, '$.conversation') IS NULL AND coalesce(json_extract(i.metadata, '$.knowledgeDefinition'), 0) = 0 AND i.id NOT IN (SELECT id FROM template_members)`;
 // A due date another device wrote in any other shape counts as never scheduled.
 const DUE = `CASE WHEN json_type(i.metadata, '$.reviewSchedule.dueAt') = 'text'
   AND json_extract(i.metadata, '$.reviewSchedule.dueAt') GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'
@@ -76,7 +76,7 @@ export class ReviewService {
        ORDER BY tier, due_at, pinned_at IS NULL, created_at, id LIMIT ?`,
       ...(projectId === null ? [] : [projectId]), this.ctx.now(), size,
     );
-    const items = this.items.withTags(rows.map(toItem));
+    const items = this.items.withTags(rows.map(toSummaryItem));
     return rows.map((row, index) => {
       const item = items[index]!;
       const { lastReviewedAt, count } = scheduleOf(item.metadata);
@@ -108,7 +108,7 @@ export class ReviewService {
     const row = this.items.row(id);
     if (row.archived_at !== null) throw invalid('That item is archived. Unarchive it to review it again.');
     const metadata = JSON.parse(row.metadata) as ItemMetadata;
-    if (!REVIEWABLE.includes(row.type) || metadata.secret === true || metadata.savedView != null || metadata.conversation != null
+    if (!REVIEWABLE.includes(row.type) || metadata.secret === true || metadata.savedView != null || metadata.conversation != null || metadata.knowledgeDefinition === true
       || inTemplate(this.ctx, row.id)) {
       throw invalid('Only notes, links, files and images can be reviewed. Tasks, decisions, secret notes, saved conversations, saved views and templates stay out of review.');
     }
@@ -138,7 +138,7 @@ function scheduleOf(metadata: ItemMetadata): Pick<ReviewSchedule, 'count' | 'his
 }
 
 const inTemplate = (ctx: Context, id: string) => ctx.get(
-  `SELECT 1 FROM items WHERE id IN (SELECT value FROM json_each(?)) AND json_extract(metadata, '$.template') IS NOT NULL`,
+  `SELECT 1 FROM items WHERE id IN (SELECT value FROM json_each(?)) AND (json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1)`,
   JSON.stringify(pathToRoot(ctx, id)),
 ) !== undefined;
 

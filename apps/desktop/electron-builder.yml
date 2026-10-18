@@ -34,6 +34,8 @@ asarUnpack:
 # Every native dependency ships N-API prebuilds, so there's nothing to rebuild against Electron's ABI.
 npmRebuild: false
 mac:
+  extendInfo:
+    NSMicrophoneUsageDescription: Record a meeting or lecture only when you press Record. Audio stays in your library unless you choose transcription.
   category: public.app-category.productivity
   target:
     # Separate dmgs: onnxruntime-node has no darwin-x64 binary, so the Intel build ships without it (keyword search only).

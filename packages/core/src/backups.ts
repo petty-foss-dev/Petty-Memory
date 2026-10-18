@@ -153,7 +153,7 @@ export function restoreBackup(paths: MemoryPaths, snapshot: string, now = new Da
     // A new writer identity makes peers detect a rewind even after new edits reuse old change numbers.
     transaction(restored, () => {
       restored.prepare(`INSERT INTO settings (key, value) VALUES ('device_id', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`).run(newId());
-      restored.prepare(`DELETE FROM settings WHERE key LIKE 'sync.peer.%' OR key = 'sync.exported_seq'`).run();
+      restored.prepare(`DELETE FROM settings WHERE key LIKE 'sync.peer.%' OR key = 'sync.exported_seq' OR key LIKE 'sources.%'`).run();
       if (restored.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'sync_cursors'`).get()) restored.exec(`DELETE FROM sync_cursors`);
     });
     const referenced = new Set((restored.prepare('SELECT DISTINCT sha256 FROM attachments').all() as { sha256: string }[]).map((r) => r.sha256));

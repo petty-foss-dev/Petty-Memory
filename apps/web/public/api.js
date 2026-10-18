@@ -32,7 +32,7 @@ function explain(status, code, message) {
   return message;
 }
 
-export async function request(method, path, body, { signal } = {}) {
+export async function request(method, path, body, { signal, blob = false } = {}) {
   if (!token) throw new ApiError(401, 'unauthorized', 'Not connected.');
   const sentToken = token;
   const headers = { Authorization: `Bearer ${sentToken}` };
@@ -49,6 +49,26 @@ export async function request(method, path, body, { signal } = {}) {
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError(0, 'network', 'Couldn’t reach the Petty Memory server. Check that it is still running.');
+  }
+  if (res.ok && blob) {
+    const maximum = 32 * 1024 * 1024;
+    if (Number(res.headers.get('content-length') ?? 0) > maximum) {
+      await res.body?.cancel();
+      throw new ApiError(413, 'too_large', 'Research playback and PDF preview support files up to 32 MB. Open the original file for larger documents.');
+    }
+    const chunks = [];
+    let size = 0;
+    const reader = res.body?.getReader();
+    for (let chunk = await reader?.read(); chunk && !chunk.done; chunk = await reader?.read()) {
+      size += chunk.value.byteLength;
+      if (size > maximum) {
+        await reader?.cancel();
+        throw new ApiError(413, 'too_large', 'This file is larger than the 32 MB research preview limit.');
+      }
+      chunks.push(chunk.value);
+    }
+    if (token !== sentToken) throw new DOMException('The connection changed.', 'AbortError');
+    return new Blob(chunks, { type: res.headers.get('content-type') ?? 'application/octet-stream' });
   }
   const text = await res.text();
   if (token !== sentToken) throw new DOMException('The connection changed.', 'AbortError');
@@ -114,3 +134,27 @@ export function disconnect() {
 
 export const can = (scope) => Boolean(client?.scopes.includes(scope) || (scope === 'capture' && client?.scopes.includes('write')));
 export const currentClient = () => client;
+export const researchFile = (id, signal) => request('GET', `/items/${enc(id)}/file`, undefined, { signal, blob: true });
+
+export async function uploadResearchFile(file, { signal } = {}) {
+  if (!can('capture')) throw new ApiError(403, 'insufficient_scope', SCOPE_HELP.capture);
+  const types = { pdf: 'application/pdf', mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', flac: 'audio/flac', webm: 'audio/webm' };
+  const extension = file.name?.split('.').at(-1)?.toLowerCase();
+  const mimeType = types[extension];
+  if (!mimeType) throw new ApiError(400, 'invalid', 'Choose a PDF, MP3, M4A, WAV, Ogg, FLAC or WebM file.');
+  const maximum = (mimeType === 'application/pdf' ? 32 : 25) * 1024 * 1024;
+  if (!file.size || file.size > maximum) throw new ApiError(413, 'too_large', `Choose a ${mimeType === 'application/pdf' ? 'PDF up to 32' : 'recording up to 25'} MB.`);
+  const sentToken = token;
+  const response = await fetch('/api/v1/files', {
+    method: 'POST', headers: { Authorization: `Bearer ${sentToken}`, 'Content-Type': mimeType, 'X-Filename': encodeURIComponent(file.name), 'Idempotency-Key': uuidv7() },
+    body: file, credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal,
+  });
+  if (token !== sentToken) throw new DOMException('The connection changed.', 'AbortError');
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new ApiError(response.status, data?.error?.code ?? 'error', explain(response.status, data?.error?.code, data?.error?.message ?? 'The file could not be saved.'));
+    if (response.status === 401) onUnauthorized?.(error);
+    throw error;
+  }
+  return data;
+}

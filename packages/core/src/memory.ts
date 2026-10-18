@@ -4,6 +4,9 @@ import { ActionService } from './actions.ts';
 import { ConversationService } from './conversations.ts';
 import { ReviewService } from './review.ts';
 import { InsightService } from './insights.ts';
+import { KnowledgeService } from './knowledge.ts';
+import { ResearchService } from './research.ts';
+import { SourceService } from './sources.ts';
 import { BackupService } from './backups.ts';
 import { ClientService } from './clients.ts';
 import { FileService } from './files.ts';
@@ -75,6 +78,9 @@ export class EnveMemory {
   readonly chats: ConversationService;
   readonly review: ReviewService;
   readonly insights: InsightService;
+  readonly knowledge: KnowledgeService;
+  readonly research: ResearchService;
+  readonly sources: SourceService;
   private readonly db: DatabaseSync;
   private readonly ctx: Context;
 
@@ -123,6 +129,9 @@ export class EnveMemory {
     this.chats = new ConversationService(this.ctx, this.items, this.projects);
     this.review = new ReviewService(this.ctx, this.items, this.projects);
     this.insights = new InsightService(this.ctx, this.items, this.editor);
+    this.knowledge = new KnowledgeService(this.ctx, this.items, this.projects);
+    this.research = new ResearchService(this.ctx, this.items);
+    this.sources = new SourceService(this.ctx, this.items, this.projects, this.files);
   }
 
   get actor(): string {

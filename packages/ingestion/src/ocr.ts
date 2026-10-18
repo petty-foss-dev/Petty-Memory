@@ -16,7 +16,12 @@ const assetPath = (path: string) => path.replace(/\.asar([/\\])/, '.asar.unpacke
 
 export async function extractImageText(memory: EnveMemory, attachmentId: string): Promise<{ text: string; engine: string }> {
   const { attachment, data } = memory.files.readAttachment(attachmentId, { maxBytes: MAX_BYTES });
-  if (!['image/png', 'image/jpeg', 'image/webp', 'image/tiff', 'image/bmp'].includes(attachment.mimeType)) {
+  return extractImageBytes(data, attachment.mimeType);
+}
+
+export async function extractImageBytes(data: Uint8Array, mimeType: string): Promise<{ text: string; engine: string }> {
+  if (data.byteLength === 0 || data.byteLength > MAX_BYTES) throw new MemoryError('invalid', 'Choose an image up to 20 MB.');
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/tiff', 'image/bmp'].includes(mimeType)) {
     throw new MemoryError('invalid', 'Choose a PNG, JPEG, WebP, TIFF or BMP image. Convert HEIC images on your phone before host extraction.');
   }
   let dimensions: ReturnType<typeof imageSize>;
@@ -40,7 +45,7 @@ export async function extractImageText(memory: EnveMemory, attachmentId: string)
       cacheMethod: 'none', gzip: true, errorHandler: () => {},
     });
     if (expired) { await worker.terminate(); return ''; }
-    const result = await worker.recognize(data, { rotateAuto: true });
+    const result = await worker.recognize(Buffer.from(data), { rotateAuto: true });
     return result.data.text.trim();
   };
   const recognition = recognize();

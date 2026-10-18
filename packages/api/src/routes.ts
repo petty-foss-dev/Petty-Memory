@@ -3,6 +3,7 @@ import { type AiProvider, type ChatRequest, PROVIDERS, chat, proposeEdit } from 
 import { extractImageText } from '@enve-memory/ingestion';
 import { importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
 import { HttpError } from './errors.ts';
+import { knowledgeRoutes, type AudioTranscriptionConfig } from './knowledge.ts';
 
 export interface RouteContext {
   memory: EnveMemory;
@@ -11,6 +12,7 @@ export interface RouteContext {
   query: URLSearchParams;
   body: Record<string, unknown> | undefined;
   aiProvider: () => AiProvider | null;
+  transcription: () => AudioTranscriptionConfig | null;
   maxSyncBytes: number;
   waitForChange: (since: number, timeout: number) => Promise<number>;
 }
@@ -22,6 +24,7 @@ export interface Route {
   scope: ClientScope | null;
   status?: number;
   hostVault?: boolean;
+  transient?: boolean;
   handle: (ctx: RouteContext) => unknown | Promise<unknown>;
 }
 
@@ -151,12 +154,13 @@ function captureNote(note: string | undefined, selection: string | undefined): s
 }
 
 export const routes: Route[] = [
+  ...knowledgeRoutes,
   { method: 'GET', pattern: path('/whoami'), scope: null, handle: ({ client }) => client },
   {
     method: 'GET', pattern: path('/capabilities'), scope: 'read',
     handle: ({ memory }) => ({
       api: 1, schema: memory.schemaVersion,
-      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates', 'ai-chat', 'library-organization', 'saved-conversations', 'ai-actions', 'knowledge-review', 'connection-suggestions', 'image-ocr', 'enve-highlights'],
+      features: ['outline', 'item-versions', 'editor-actions', 'library-feed', 'changes-wait', 'vault-sealed-v1', 'vault-sealed-files-v1', 'secret-outlines-v1', 'public-shares', 'saved-views', 'note-templates', 'ai-chat', 'library-organization', 'saved-conversations', 'ai-actions', 'knowledge-review', 'connection-suggestions', 'image-ocr', 'enve-highlights', 'reusable-ai-workflows', 'audio-research', 'pdf-research', 'custom-collections', 'source-freshness', 'watched-sources', 'organization-preferences'],
       maxWait: 25_000,
     }),
   },

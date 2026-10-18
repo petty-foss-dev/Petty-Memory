@@ -37,13 +37,16 @@ public struct ChatRequest: Encodable, Hashable, Sendable {
     public let rootId: String?
     /// A keyword topic; the actions mode takes exactly one of `rootId` or `query`.
     public let query: String?
+    /// Saved organization preferences the person chose; organize mode only, and omitted when none were chosen.
+    public let preferences: [String]?
     /// Earlier messages left out to fit; not encoded.
     public let omitted: Int
 
-    private enum CodingKeys: String, CodingKey { case mode, messages, project, rootId, query }
+    private enum CodingKeys: String, CodingKey { case mode, messages, project, rootId, query, preferences }
 
     /// Whole exchanges drop from the front so roles still alternate and the new message stays whole.
-    public init(mode: ChatMode, history: [ChatMessage], message: String, project: String? = nil, rootId: String? = nil, query: String? = nil) {
+    public init(mode: ChatMode, history: [ChatMessage], message: String, project: String? = nil, rootId: String? = nil, query: String? = nil,
+                preferences: [String] = []) {
         var earlier = history.map { ChatMessage(role: $0.role, content: Self.clipped($0.content)) }
         let original = earlier.count
         if earlier.first?.role == .assistant { earlier.removeFirst() }
@@ -58,6 +61,7 @@ public struct ChatRequest: Encodable, Hashable, Sendable {
         self.project = project
         self.rootId = rootId
         self.query = query
+        self.preferences = mode == .organize && !preferences.isEmpty ? preferences : nil
         omitted = original - earlier.count
     }
 
@@ -78,12 +82,23 @@ public struct ChatRequest: Encodable, Hashable, Sendable {
 
 /// Each `[n]` in the text refers to the source numbered `n`.
 public struct CitedAnswer: Decodable, Hashable, Sendable {
+    public struct Locator: Codable, Hashable, Sendable {
+        public let kind: String
+        public let sourceId: String
+        public let sha256: String
+        public let page: Int?
+        public let start: Double?
+        public let end: Double?
+        public let quote: String
+    }
+
     public struct Source: Decodable, Hashable, Sendable {
         public let n: Int
         public let id: String
         public let title: String
         public let url: String?
         public let type: ItemType
+        public let locator: Locator?
     }
 
     public let answer: String

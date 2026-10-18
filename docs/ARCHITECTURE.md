@@ -90,6 +90,14 @@ AI action previews use a bounded source snapshot and stable references, then cor
 
 Topic organization preserves the complete keyword set and may add up to 50 labeled semantic suggestions within its existing scope limits. Optional semantic failures leave a clearly identified keyword-only proposal. Image OCR is separate from the LLM: bundled English Tesseract runs on the library host, while native photo capture uses Vision on the iPhone. Neither extraction writes a note until the person saves the reviewed text. Highlight imports validate chosen files and create provenance-bearing ordinary notes; repeated identities are skipped. See [POWER_FEATURES.md](POWER_FEATURES.md) for workflows and limits.
 
+## Knowledge workspace
+
+`knowledge`, `research` and `sources` are shared core services. Recipes, preferences, collections and watch definitions are versioned definition notes; field values and research provenance live on ordinary items. Source selection excludes definition trees before ranking, so matching workflow instructions cannot crowd actual evidence out of AI retrieval. Recipes rerun the existing action proposal pipeline against a fresh scope. Explicitly selected preferences supply bounded context, never an implicit learned policy.
+
+PDF extraction retains a bounded page index. The clients render original bytes with locally bundled PDF.js or native PDFKit; OCR is a reviewed draft. Annotations validate page, quote and immutable attachment identity in core. Captions are parsed separately from optional compatible speech transcription, and transcripts/passages retain recording timestamps. Answers carry source locators rather than fabricated page links.
+
+`SourceWatcher`, owned by the API host lifecycle, only checks enabled, due sources and queues previews. Approval paths, queues and target identities are device-local settings; accepted content uses normal history and sync. Apply revalidates source/target hashes and file bytes. Backup restore clears host approval/queue state. Freshness review uses bounded snapshots and exact model quotations; explicit ordinary-note supersession retains both texts and is respected by cited answers. See [Knowledge workflows](KNOWLEDGE_FEATURES.md).
+
 ## Automations
 
 `RuleService` (core) runs every enabled rule when an item is created and again when its source is archived, so the title, domain and text are known. Conditions (all must hold): item types, link domains (subdomains included), keywords in the title, note or archived text, and the saving client (`mcp:`, `api:Chrome`, …). Actions: add tags, and file into a project if the item has none. Because core applies rules, every client benefits: MCP, the API, the CLI and the desktop app. Actions are attributed to `rule:<name>`. Rules are device-local configuration; they aren't synced.

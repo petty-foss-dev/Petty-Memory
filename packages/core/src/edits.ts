@@ -3,6 +3,7 @@ import type { Context } from './context.ts';
 import { MemoryError, invalid } from './errors.ts';
 import type { ItemService } from './items.ts';
 import type { OutlineService } from './outline.ts';
+import { pathToRoot } from './placement.ts';
 import type { VersionService } from './versions.ts';
 import { DEFAULT_PRESENTATION, type PresentationService, validPresentationPatch } from './presentation.ts';
 import type { EditOperation, EditPreview, EditProposal, ItemMetadata, ItemPresentation, ItemType, MissingFile } from './types.ts';
@@ -55,6 +56,8 @@ export class EditService {
 
   scope(rootId: string): EditScope {
     const root = this.items.row(rootId);
+    const inDefinition = this.ctx.get(`SELECT 1 FROM items WHERE id IN (SELECT value FROM json_each(?)) AND coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1`, JSON.stringify(pathToRoot(this.ctx, root.id)));
+    if (inDefinition) throw invalid('Workflow definitions and notes inside them cannot be changed by AI. Choose an ordinary note.');
     if (!editable(root)) throw invalid('Choose an active, ordinary item to edit: decisions, secret notes and archived items can’t be edited this way.');
     const nodes: EditScopeNode[] = [];
     const pending = [root.id];
@@ -280,7 +283,8 @@ const newPlan = (scope: EditScope): Plan => ({
 });
 
 function editable(row: { type: string; metadata: string; archived_at: string | null }): boolean {
-  return row.type !== 'decision' && row.archived_at === null && (JSON.parse(row.metadata) as ItemMetadata).secret !== true;
+  const metadata = JSON.parse(row.metadata) as ItemMetadata;
+  return row.type !== 'decision' && row.archived_at === null && metadata.secret !== true && metadata.knowledgeDefinition !== true;
 }
 
 const stale = () => new MemoryError('conflict', 'These items changed since the proposal was made. Ask for a new proposal.');

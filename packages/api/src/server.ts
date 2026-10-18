@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream';
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { type ApiClient, type ClientScope, DrainWorker, type EnveMemory, INTENTS, MAX_SEALED_FILE_BYTES, MemoryError, parseWhen } from '@enve-memory/core';
-import { processPending } from '@enve-memory/ingestion';
+import { SourceWatcher, processPending } from '@enve-memory/ingestion';
 import { type AiProvider, AiError, providerFor } from '@enve-memory/ai';
 import { ENVE_HIGHLIGHT_MAX_BYTES } from '@enve-memory/importers';
 import { createServer as createMcpServer } from '@enve-memory/mcp';
@@ -12,10 +12,12 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import { type AuthInfo, createMcpHandler } from '@modelcontextprotocol/server';
 import { HttpError } from './errors.ts';
 import { type Route, routes } from './routes.ts';
+import type { AudioTranscriptionConfig } from './knowledge.ts';
 
 export const DEFAULT_PORT = 49231;
 const MAX_JSON_BODY = 2 * 1024 * 1024;
 const MAX_IMPORT_JSON_BODY = ENVE_HIGHLIGHT_MAX_BYTES * 6 + 1024;
+const MAX_RESEARCH_OCR_BODY = Math.ceil(20 * 1024 * 1024 / 3) * 4 + 4096;
 const MAX_FILE_BODY = 200 * 1024 * 1024;
 const MAX_SEALED_FILE_BODY = Math.ceil((MAX_SEALED_FILE_BYTES + 4096 + 9) / 3) * 4 + 1024;
 
@@ -30,6 +32,7 @@ export interface ApiServerOptions {
   /** Called after every write and every finished ingestion pass, e.g. to kick the embedding indexer. */
   afterWrite?: () => void;
   aiProvider?: () => AiProvider | null;
+  transcription?: () => AudioTranscriptionConfig | null;
   webRoot?: string;
   webOrigins?: string[];
   maxUploadBytes?: number;
@@ -42,6 +45,7 @@ export interface ApiServerOptions {
 export interface ApiServer {
   readonly server: Server;
   readonly ingest: DrainWorker;
+  readonly sources: SourceWatcher;
   listen(): Promise<string>;
   close(): Promise<void>;
 }
@@ -70,6 +74,7 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
     ingest.kick();
     options.afterWrite?.();
   };
+  const sources = new SourceWatcher(memory, { onChecked: changed });
   const mcp = createMcpHandler((ctx) => {
     const auth = ctx.authInfo!;
     return createMcpServer(memory, options.version, {
@@ -133,7 +138,9 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
         return await mcpNode(req, res);
       }
 
-      const preview = req.method === 'POST' && [
+      const foundRoute = matchRoute(req.method ?? 'GET', url.pathname);
+      if (url.pathname.startsWith('/api/v1/knowledge/')) requireScope(client, 'read');
+      const preview = foundRoute?.route.transient === true || req.method === 'POST' && [
         '/api/v1/ai/chat', '/api/v1/capture/ocr', '/api/v1/imports/enve-highlights/preview', '/api/v1/insights/merge/preview',
       ].includes(url.pathname);
       const rawKey = req.method === 'GET' || req.method === 'HEAD' || preview ? undefined : idempotencyKeyOf(req);
@@ -225,7 +232,7 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
         });
       }
 
-      const match = matchRoute(req.method ?? 'GET', url.pathname);
+      const match = foundRoute;
       if (!match) throw new HttpError(404, 'not_found', `No route for ${req.method} ${url.pathname}.`);
       if (match.route.scope) requireScope(client, match.route.scope);
       if (match.route.hostVault && (!options.allowHostVault || options.lan)) {
@@ -234,8 +241,10 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
       if (replay) return replayResponse(res, replay);
       const fileEnvelope = req.method === 'PUT' && /^\/api\/v1\/vault\/items\/[^/]+\/attachments\/[^/]+$/.test(url.pathname);
       const importEnvelope = req.method === 'POST' && /^\/api\/v1\/imports\/enve-highlights(?:\/preview)?$/.test(url.pathname);
+      const researchOcr = req.method === 'POST' && url.pathname === '/api/v1/knowledge/research/ocr';
       const bodyLimit = url.pathname === '/api/v1/sync' ? maxSync : fileEnvelope ? Math.min(maxUpload, MAX_SEALED_FILE_BODY)
-        : importEnvelope && options.maxJsonBytes === undefined ? MAX_IMPORT_JSON_BODY : maxJson;
+        : importEnvelope && options.maxJsonBytes === undefined ? MAX_IMPORT_JSON_BODY
+          : researchOcr && options.maxJsonBytes === undefined ? Math.min(MAX_RESEARCH_OCR_BODY, Math.ceil(maxUpload / 3) * 4 + 4096) : maxJson;
       const body = req.method === 'GET' ? undefined : await readJson(req, bodyLimit);
       assertClientActive(memory, client);
       const route = match.route;
@@ -243,10 +252,15 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
         route.handle({
           memory, client, params: match.params, query: url.searchParams, body,
           aiProvider: options.aiProvider ?? (() => providerFor(memory)),
+          transcription: options.transcription ?? (() => {
+            const baseUrl = process.env.MEMORY_TRANSCRIPTION_URL;
+            const model = process.env.MEMORY_TRANSCRIPTION_MODEL;
+            return baseUrl && model ? { baseUrl, model, apiKey: process.env.MEMORY_TRANSCRIPTION_KEY } : null;
+          }),
           maxSyncBytes: maxSync,
           waitForChange: (since, timeout) => waitForChange(client.id, since, timeout, res),
         }));
-      if (req.method !== 'GET') changed();
+      if (req.method !== 'GET' && !preview) changed();
       respond(match.route.status ?? 200, result);
     } catch (error) {
       if (!res.destroyed && !res.writableEnded) sendError(res, error);
@@ -309,16 +323,19 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
   return {
     server,
     ingest,
+    sources,
     listen: () =>
       new Promise((resolve, reject) => {
         server.once('error', reject);
         server.listen(options.port ?? DEFAULT_PORT, options.lan ? '0.0.0.0' : '127.0.0.1', () => {
+          sources.start();
           const { port } = server.address() as AddressInfo;
           resolve(`http://127.0.0.1:${port}`);
         });
       }),
     close: async () => {
       closing = true;
+      await sources.stop();
       for (const clients of waiting.values()) for (const controller of clients) controller.abort();
       await ingest.idle();
       await mcp.close();
@@ -357,16 +374,16 @@ function serveWeb(req: IncomingMessage, res: ServerResponse, webRoot: string, pa
   const root = resolve(webRoot);
   const path = resolve(root, route.replace(/^\/+/, ''));
   const types: Record<string, string> = {
-    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
     '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   };
-  const type = types[extname(path)];
+  const type = route === '/vendor/pdf-licenses.txt' ? 'text/plain; charset=utf-8' : types[extname(path)];
   if (!path.startsWith(`${root}${sep}`) || !type || !existsSync(path) || !statSync(path).isFile()) {
     throw new HttpError(404, 'not_found', 'No web asset at this address.');
   }
   res.writeHead(200, {
     'Content-Type': type, 'Content-Length': statSync(path).size, 'Cache-Control': 'no-store',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
     'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   });
   if (req.method === 'HEAD') return void res.end();

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const files = ['server.ts', 'build.mjs', 'check.mjs', ...readdirSync(join(root, 'public'))
+const files = ['server.ts', 'build.mjs', 'research-assets.mjs', 'check.mjs', ...readdirSync(join(root, 'public'))
   .filter((name) => name.endsWith('.js'))
   .map((name) => join('public', name))];
 

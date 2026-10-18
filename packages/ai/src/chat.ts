@@ -16,6 +16,7 @@ export interface ChatRequest {
   project?: string;
   rootId?: string;
   query?: string;
+  preferences?: string[];
 }
 
 export type ChatResponse =
@@ -58,6 +59,10 @@ export function parseChatRequest(raw: unknown): ChatRequest {
   if (parsed.at(-1)!.role !== 'user') throw invalid('The last message must be yours: say what you want next.');
   if (total > CHAT_LIMITS.totalChars) throw invalid(`This chat is longer than ${CHAT_LIMITS.totalChars.toLocaleString('en')} characters in total; start a new chat to keep going.`);
   const request: ChatRequest = { mode: mode as ChatRequest['mode'], messages: parsed };
+  if (raw.preferences !== undefined && request.mode === 'organize') {
+    if (!Array.isArray(raw.preferences) || raw.preferences.length > 10 || raw.preferences.some((id) => typeof id !== 'string' || id.length > 100)) throw invalid('Choose up to ten saved organization preferences.');
+    request.preferences = raw.preferences as string[];
+  }
   const project = optionalId(raw.project, 'project');
   const rootId = optionalId(raw.rootId, 'note');
   if (request.mode === 'ask' && project) request.project = project;
@@ -80,11 +85,11 @@ export function parseChatRequest(raw: unknown): ChatRequest {
 
 // Saving a conversation and applying proposals are separate, explicit operations.
 export async function chat(memory: EnveMemory, provider: AiProvider, request: ChatRequest): Promise<ChatResponse> {
-  const { mode, messages, project, rootId, query } = parseChatRequest(request);
+  const { mode, messages, project, rootId, query, preferences } = parseChatRequest(request);
   const history = messages.slice(0, -1);
   const last = messages.at(-1)!.content;
   if (mode === 'ask') return { kind: 'answer', answer: await ask(memory, provider, last, project ? { project } : {}, history) };
-  if (mode === 'organize') return proposeOrganization(memory, provider, messages);
+  if (mode === 'organize') return proposeOrganization(memory, provider, messages, preferences);
   if (mode === 'actions') return proposeActions(memory, provider, { rootId, query, project }, messages);
   return { kind: 'proposal', proposal: await proposeEdit(memory, provider, { rootId: rootId!, instruction: last, history }) };
 }

@@ -68,6 +68,14 @@ The desktop app encrypts API keys and the server-sync token for BYO AI providers
 - `save_file` over stdio accepts a local path, because the stdio client already runs as the user. Over HTTP the `path` parameter doesn't exist, so a remote token holder can't make the server read arbitrary files.
 - API calls carry bearer tokens in `Authorization`, never query strings. Pairing links intentionally carry a device token for enrollment, and public links carry a share capability. Passphrases and API credentials are not recorded in server logs or the change log.
 
+## Knowledge workflows
+
+New `/knowledge` routes require read access; mutations and provider/recognition requests also require write access. Workflow runs, transcript/OCR previews and conflict analysis bypass replay storage. Definition trees are excluded before AI retrieval and from action/review scopes. All reviewed changes use core validation, transactions, history and source-state checks.
+
+Audio recording starts on request, stops when leaving/backgrounding, and saves only explicitly. Optional transcription requires separate host configuration and confirmation for each recording. Credentials stay in the OS-encrypted store or environment. Redirects are refused and requests/responses bounded. Caption imports work without a provider. Scanned-page OCR uses bundled host Tesseract or native Vision; original files stay unchanged.
+
+Remote clients cannot supply a host folder path. Local approval is explicit, limited to a specific non-library folder; scans ignore symbolic links and hidden files and recheck file identity at Apply. Approvals and pending queues are excluded from content sync/export, cleared on backup restore and removed with their definition. Watched source text never becomes executable instructions, and periodic checks never import automatically. See the [workflow limits](KNOWLEDGE_FEATURES.md).
+
 ## Reporting
 
 See [SECURITY.md](../SECURITY.md) at the repository root for how to report a vulnerability privately.

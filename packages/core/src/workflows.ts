@@ -1,4 +1,4 @@
-import { type Context, ITEM_COLUMNS, ITEM_FROM, type ItemRow, clientId, newId, normalizeTag, oneOf, toItem } from './context.ts';
+import { type Context, ITEM_COLUMNS, ITEM_FROM, type ItemRow, clientId, newId, normalizeTag, oneOf, toSummaryItem } from './context.ts';
 import { invalid, notFound } from './errors.ts';
 import { type ItemService, clampLimit, pageCursor } from './items.ts';
 import { validPresentationPatch } from './presentation.ts';
@@ -133,7 +133,7 @@ export class ViewService {
     // Notes added under a template with the ordinary editor belong to it too, though they carry no template metadata.
     const rows = this.ctx.all<ItemRow>(
       `WITH RECURSIVE template_members(id) AS (
-         SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL
+         SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
          UNION SELECT c.id FROM items c JOIN template_members m ON c.parent_id = m.id
        )
        SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM}
@@ -141,7 +141,7 @@ export class ViewService {
        ORDER BY i.updated_at DESC, i.id DESC LIMIT ?`,
       ...params, size + 1,
     );
-    const items = this.items.withTags(rows.slice(0, size).map(toItem));
+    const items = this.items.withTags(rows.slice(0, size).map(toSummaryItem));
     return { items, next: rows.length > size ? pageCursor(items.at(-1)!) : null };
   }
 
@@ -226,7 +226,7 @@ export class TemplateService {
            AND i.type = 'note' AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0 AND i.archived_at IS NULL
          ORDER BY i.title COLLATE NOCASE, i.id`,
       )
-      .map(toItem));
+      .map(toSummaryItem));
   }
 
   /** Copies the note and everything below it into a new template; the source is left as it was. */

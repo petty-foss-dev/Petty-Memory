@@ -1,5 +1,5 @@
 import type { Answer, ChatRequest } from '@enve-memory/ai';
-import type { EditProposal, ItemType, OrganizationProposal, OrganizationResult } from '@enve-memory/core';
+import type { EditProposal, ItemType, OrganizationPreference, OrganizationProposal, OrganizationResult } from '@enve-memory/core';
 import { useEffect, useRef, useState } from 'react';
 import type { ActionProposal, ActionResult, ConversationInput } from '../../shared/ipc.ts';
 import { call, errorMessage, useLive } from '../lib/api.ts';
@@ -11,7 +11,9 @@ import { Empty, Icon, TypeIcon, useFeedback } from '../ui.tsx';
 import { ActionsDialog, ActionsTurn } from './Actions.tsx';
 import { AiEditDialog } from './AiEdit.tsx';
 import { ItemPicker, type Picked } from './ItemPicker.tsx';
+import { timestamp, useKnowledge } from './KnowledgeCommon.tsx';
 import { OrganizationTurn, OrganizeDialog } from './Organize.tsx';
+import { PreferenceChooser } from './Preferences.tsx';
 import { MODE_LABELS, SaveChatDialog, SavedChatsDialog } from './SavedChats.tsx';
 
 type Mode = ChatRequest['mode'];
@@ -33,7 +35,9 @@ const STARTERS: { mode: Mode; label: string; text: string }[] = [
 
 const NEW_CHAT = 'Started a new chat. Changes you already applied stay in your notes.';
 
-function Cited({ text, sources, onOpen }: { text: string; sources: Answer['sources']; onOpen: (id: string) => void }) {
+type Source = Answer['sources'][number];
+
+function Cited({ text, sources, onOpen }: { text: string; sources: Answer['sources']; onOpen: (source: Source) => void }) {
   const byNumber = new Map(sources.map((s) => [s.n, s]));
   return (
     <div className="answer-text">
@@ -43,7 +47,7 @@ function Cited({ text, sources, onOpen }: { text: string; sources: Answer['sourc
             const n = /^\[(\d+)\]$/.exec(part)?.[1];
             const source = n ? byNumber.get(Number(n)) : undefined;
             return source ? (
-              <button key={i} className="cite" title={source.title || source.url || ''} onClick={() => onOpen(source.id)}>{n}</button>
+              <button key={i} className="cite" title={source.title || source.url || ''} onClick={() => onOpen(source)}>{n}</button>
             ) : (
               <span key={i}>{part}</span>
             );
@@ -54,23 +58,26 @@ function Cited({ text, sources, onOpen }: { text: string; sources: Answer['sourc
   );
 }
 
-function AnswerTurn({ answer, noteId, saving, onSave, onOpen }: {
+function AnswerTurn({ answer, noteId, saving, onSave, onOpen, onSource }: {
   answer: Answer;
   noteId: string | undefined;
   saving: boolean;
   onSave: () => void;
   onOpen: (id: string) => void;
+  onSource: (source: Source) => void;
 }) {
   return (
     <div className="answer">
-      <Cited text={answer.answer} sources={answer.sources} onOpen={onOpen} />
+      <Cited text={answer.answer} sources={answer.sources} onOpen={onSource} />
       {answer.sources.length > 0 && (
         <ol className="sources" aria-label="Sources">
           {answer.sources.map((source) => (
             <li key={source.n}>
-              <button className="link-button" onClick={() => onOpen(source.id)}>
+              <button className="link-button" onClick={() => onSource(source)}>
                 <span className="cite static">{source.n}</span>
                 <TypeIcon type={source.type as ItemType} size={14} /> {source.title || source.url || `Untitled ${source.type}`}
+                {source.locator?.page !== undefined && <span className="muted small"> · page {source.locator.page}</span>}
+                {source.locator?.kind === 'audio' && source.locator.start !== undefined && <span className="muted small"> · at {timestamp(source.locator.start)}</span>}
               </button>
             </li>
           ))}
@@ -129,6 +136,11 @@ export function Ask() {
   const [resuming, setResuming] = useState(false);
   const [voice, setVoice] = useState<DictationState>({ status: 'idle' });
   const [systemHelp, setSystemHelp] = useState(false);
+  const [chosenPreferences, setChosenPreferences] = useState<string[]>([]);
+  const preferenceList = useKnowledge<OrganizationPreference[]>(mode === 'organize' ? '/preferences' : null);
+  // Organizing the whole library offers only preferences that apply everywhere.
+  const globalPreferences = (preferenceList.data ?? []).filter((preference) => preference.project === null);
+  const preferences = chosenPreferences.filter((id) => globalPreferences.some((preference) => preference.id === id));
   const generation = useRef(0);
   const sending = useRef(false);
   const dictation = useRef<Dictation | null>(null);
@@ -187,6 +199,19 @@ export function Ask() {
     if (next === mode) return;
     restart();
     setMode(next);
+    setChosenPreferences([]);
+  };
+
+  const openSource = (source: Source) => {
+    const locator = source.locator;
+    if (!locator) {
+      openItem(source.id);
+      return;
+    }
+    go({
+      view: 'knowledge', section: 'research', sourceId: locator.sourceId, quote: locator.quote,
+      ...(locator.page !== undefined ? { page: locator.page } : {}), ...(locator.start !== undefined ? { start: locator.start } : {}),
+    });
   };
 
   const scopeFields = (): Pick<ConversationInput, 'project' | 'rootId' | 'query'> => {
@@ -207,7 +232,7 @@ export function Ask() {
     }
     const run = generation.current;
     const { messages, dropped: left } = chatMessages(turns, text);
-    const request = { mode, messages, ...scopeFields() } as ChatRequest;
+    const request = { mode, messages, ...scopeFields(), ...(mode === 'organize' && preferences.length ? { preferences } : {}) } as ChatRequest;
     sending.current = true;
     setPending(text);
     setDraft('');
@@ -411,6 +436,24 @@ export function Ask() {
           apply.
         </p>
       )}
+      {mode === 'organize' && (
+        <div className="chat-preferences">
+          {preferenceList.error && <p className="error-text small" role="alert">{preferenceList.error.message}</p>}
+          <PreferenceChooser
+            preferences={globalPreferences}
+            selected={preferences}
+            onChange={setChosenPreferences}
+            disabled={busy}
+            legend="Also follow these saved preferences (optional)"
+          />
+          {preferenceList.data && (
+            <p className="muted small">
+              {globalPreferences.length ? 'Only the preferences you tick are sent with your next request. ' : 'Save filing rules you use often and tick them here when you want them followed. '}
+              <button className="link-button" onClick={() => go({ view: 'knowledge', section: 'preferences' })}>Manage preferences</button>
+            </p>
+          )}
+        </div>
+      )}
       {mode === 'actions' && (
         <p className="muted small">
           The AI suggests tasks, tags, reminders and a brief from {actionScope === 'notes' ? 'the chosen note and everything inside it' : 'notes about the topic'}.
@@ -460,6 +503,7 @@ export function Ask() {
                     saving={savingAnswer === index}
                     onSave={() => void saveAnswer(index, reply.answer)}
                     onOpen={openItem}
+                    onSource={openSource}
                   />
                 )}
                 {reply.kind === 'proposal' && <ProposalTurn proposal={reply.proposal} onReview={() => setReviewing(reply.proposal)} />}

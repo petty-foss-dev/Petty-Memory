@@ -49,7 +49,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Petty Memory connects to the library on your computer over your home network.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>When you tap Dictate in AI chat or a new note, Petty Memory listens so it can type what you say. Petty Memory doesn't save audio.</string>
+	<string>When you tap Dictate, Petty Memory types what you say without saving audio. When you tap Record in Research, it keeps a recording only if you choose Save.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Dictate in AI chat and new notes turns your speech into text you can check before sending or saving. Where your iPhone can't do this on its own, Apple's speech service does.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

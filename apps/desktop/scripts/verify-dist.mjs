@@ -59,7 +59,7 @@ try {
   const client = new Client({ name: 'dist-check', version: '1.0.0' });
   await client.connect(new StdioClientTransport({ command: executable, args: [cli, 'mcp'], env: nodeEnv, stderr: 'pipe' }));
   const info = client.getServerVersion();
-  assert.equal(info?.name, 'enve-memory');
+  assert.equal(info?.name, 'petty-memory');
   const tools = (await client.listTools()).tools.map((t) => t.name);
   assert.ok(tools.includes('save_note') && tools.includes('search'));
   await client.callTool({ name: 'save_note', arguments: { text: 'The garage door opener uses rolling codes so a recorded press cannot be replayed.' } });

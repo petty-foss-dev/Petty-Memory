@@ -16,6 +16,8 @@ export interface SaveFileInput {
   note?: string;
   project?: string;
   tags?: string[];
+  /** False always creates a new item, so an unrelated item with the same bytes is left alone; the bytes are still stored once. */
+  deduplicate?: boolean;
   /** For importers restoring an export. */
   id?: string;
   createdAt?: string;
@@ -44,7 +46,7 @@ export class FileService {
     const sha256 = createHash('sha256').update(input.data).digest('hex');
     const mimeType = input.mimeType?.split(';')[0]?.trim().toLowerCase() || mimeFor(filename);
 
-    const existing = this.ctx.get<{ item_id: string }>(
+    const existing = input.deduplicate === false ? undefined : this.ctx.get<{ item_id: string }>(
       `SELECT a.item_id FROM attachments a JOIN items i ON i.id = a.item_id WHERE a.sha256 = ? AND i.archived_at IS NULL
        AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0 ORDER BY i.seq LIMIT 1`,
       sha256,

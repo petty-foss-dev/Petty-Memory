@@ -241,6 +241,12 @@ export function toItem(row: ItemRow): Item {
   };
 }
 
+export function toSummaryItem(row: ItemRow): Item {
+  const item = toItem(row);
+  delete item.metadata.pdfPages;
+  return item;
+}
+
 export function toTaskFields(row: ItemRow): TaskFields | null {
   if (row.task_status === null) return null;
   return {

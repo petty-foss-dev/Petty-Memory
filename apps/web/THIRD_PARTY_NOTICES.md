@@ -2,6 +2,8 @@
 
 The browser renderer uses the same Markdown parser and sanitizer as the desktop app.
 
+The PDF research renderer uses [unpdf](https://github.com/unjs/unpdf) (MIT) and its bundled [PDF.js](https://github.com/mozilla/pdf.js) (Apache-2.0). Their license text ships in `public/vendor/pdf-licenses.txt` and in the packaged desktop renderer; the PDF.js license is also preserved in [PDFJS-LICENSE](PDFJS-LICENSE).
+
 ## marked
 
 # License information

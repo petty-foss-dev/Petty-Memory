@@ -4,3 +4,5 @@ export { ENRICH_ACTOR, enrichItem, enrichWorker } from './enrich.ts';
 export { type Answer, ask, relevantPassages } from './ask.ts';
 export { ORGANIZE_ACTOR, organizeWorker, proposeEdit } from './edit.ts';
 export { CHAT_LIMITS, CHAT_MODES, type ChatMessage, type ChatRequest, type ChatResponse, chat, parseChatRequest } from './chat.ts';
+export * from './knowledge.ts';
+export * from './freshness.ts';

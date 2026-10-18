@@ -1,5 +1,5 @@
 import { type AiProvider, type KeyLookup, enrichWorker, organizeWorker, providerFor } from '@enve-memory/ai';
-import { type ApiServer, RemoteSyncClient, RemoteSyncPartialError, type RemoteSyncResult, createApiServer, lanUrls } from '@enve-memory/api';
+import { type ApiServer, type AudioTranscriptionConfig, RemoteSyncClient, RemoteSyncPartialError, type RemoteSyncResult, createApiServer, lanUrls } from '@enve-memory/api';
 import { type DrainWorker, EnveMemory, MemoryError, type SyncResult, pathsFor, restoreBackup } from '@enve-memory/core';
 import { type LocalEmbedder, attachLocalEmbedder, indexWorker } from '@enve-memory/embeddings';
 import type { ApiStatus, RemoteStatus, SyncStatus } from '../shared/ipc.ts';
@@ -12,6 +12,7 @@ export interface LibraryOptions {
   /** The browser client's static files, served for share links (/s/<token>); null if this build has none. */
   webRoot: string | null;
   keys: KeyLookup;
+  transcriptionKey?: () => string | undefined;
   /** The configured remote sync server, or null when there is none. */
   remote: () => { url: string; token: string } | null;
   /** Something in the library changed: our own write, a worker, the API, or another process. */
@@ -118,6 +119,12 @@ export class Library {
       this.aiError = (error as Error).message;
       return null;
     }
+  }
+
+  transcription(): AudioTranscriptionConfig | null {
+    const baseUrl = this.memory.settings.get('transcriptionBaseUrl');
+    const model = this.memory.settings.get('transcriptionModel');
+    return baseUrl && model ? { baseUrl, model, apiKey: this.options.transcriptionKey?.() } : null;
   }
 
   attachEmbedder(): void {
@@ -267,6 +274,7 @@ export class Library {
       // In LAN mode, pages opened from this computer's network addresses may call the API too.
       webOrigins: lan && this.options.port ? lanUrls(this.options.port).map((url) => new URL(url).origin) : [],
       aiProvider: () => this.provider(),
+      transcription: () => this.transcription(),
       afterWrite: () => {
         this.indexer?.kick();
         this.enricher?.kick();

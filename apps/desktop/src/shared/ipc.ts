@@ -8,6 +8,7 @@ import type {
   UpdateItemInput, UpdateProjectInput, UpdateTaskInput, VaultState, ViewPage,
 } from '@enve-memory/core';
 import type { ImportResult, previewEnveHighlights } from '@enve-memory/importers';
+import type { KnowledgeRequest, ResearchFile, TranscriptionStatus } from './knowledge.ts';
 
 export type ThemeMode = 'system' | 'dark' | 'light';
 
@@ -229,6 +230,12 @@ export interface TaskQuery {
  * and nothing else reaches core.
  */
 export interface Api {
+  'knowledge.request': (request: KnowledgeRequest) => unknown;
+  'research.file': (sourceId: string) => ResearchFile;
+  'research.saveAudio': (data: Uint8Array, filename: string, mimeType: string) => ItemDetail;
+  'research.transcriptionStatus': () => TranscriptionStatus;
+  'research.configureTranscription': (input: { baseUrl: string; model: string; apiKey?: string }) => TranscriptionStatus;
+  'sources.approveFolder': (watchId: string) => unknown;
   'app.info': () => AppInfo;
   'app.openLibraryFolder': () => void;
   'app.openExternal': (url: string) => void;
@@ -425,6 +432,12 @@ export type Method = keyof Api;
  * here fails to compile.
  */
 export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
+  'knowledge.request': 'read',
+  'research.file': 'read',
+  'research.saveAudio': 'write',
+  'research.transcriptionStatus': 'read',
+  'research.configureTranscription': 'write',
+  'sources.approveFolder': 'write',
   'app.info': 'read',
   'app.openLibraryFolder': 'read',
   'app.openExternal': 'read',

@@ -4,6 +4,7 @@ import { createCaptureView } from './capture.js';
 import { createChatView } from './chat.js';
 import { createDetail } from './detail.js';
 import { clearEditHistory, isEditable, redoEdit, undoEdit } from './edits.js';
+import { createKnowledgeView } from './knowledge.js';
 import { createOutline } from './outline.js';
 import { createReviewView } from './review.js';
 import { createSetupChecklist } from './setup.js';
@@ -22,6 +23,7 @@ const VIEWS = [
   ['capture', 'Capture & import'],
   ['review', 'Review'],
   ['chat', 'AI chat'],
+  ['knowledge', 'Knowledge'],
   ['highlights', 'Highlights'],
   ['views', 'Saved views'],
   ['templates', 'Templates'],
@@ -143,6 +145,11 @@ function showShell(root) {
       show('templates');
       views.templates.reveal(template);
     },
+    /** Opens a PDF at a page or a recording at a time: `{kind: 'pdf'|'audio', sourceId, page?, start?, quote?, sha256?, transcriptId?}`. */
+    openResearch(locator) {
+      views.knowledge.reveal({ ...locator, section: 'research' });
+      show('knowledge');
+    },
     async changed({ outline: refreshOutline = true, detail: refreshDetail = true } = {}) {
       await Promise.all([
         refreshOutline ? outline.refresh() : null,
@@ -163,6 +170,7 @@ function showShell(root) {
     capture: createCaptureView(ctx),
     review: createReviewView(ctx),
     chat: createChatView(ctx),
+    knowledge: createKnowledgeView(ctx),
     highlights: createHighlightsView(ctx),
     views: createViewsView(ctx),
     templates: createTemplatesView(ctx),
@@ -275,6 +283,7 @@ function showShell(root) {
   stopPolling = () => {
     views.chat.dispose();
     views.capture.dispose();
+    views.knowledge.destroy();
     lifetime.abort();
     active?.abort();
     clearTimeout(toastTimer);

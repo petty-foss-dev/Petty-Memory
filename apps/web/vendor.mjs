@@ -11,6 +11,7 @@ const license = (file) => readFileSync(fileURLToPath(file), 'utf8');
 writeFileSync(new URL('./THIRD_PARTY_NOTICES.md', import.meta.url), [
   '# Web renderer licenses',
   'The browser renderer uses the same Markdown parser and sanitizer as the desktop app.',
+  'The PDF research renderer uses unpdf (MIT) and bundled PDF.js (Apache-2.0). Their license text ships in public/vendor/pdf-licenses.txt; the PDF.js license is preserved in PDFJS-LICENSE.',
   '## marked', license(new URL('../LICENSE', marked)),
   '## DOMPurify', license(new URL('../LICENSE', purify)),
 ].join('\n\n'));

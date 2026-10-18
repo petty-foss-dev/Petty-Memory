@@ -4,8 +4,9 @@ import { call, errorMessage, useLive } from '../lib/api.ts';
 import { applyEdit } from '../lib/edits.ts';
 import { TYPE_LABELS, actorInfo, displayTitle, formatBytes, formatDate, formatDateTime, providedSourceLink, relativeTime, siteOf } from '../lib/format.ts';
 import { ATTENTION_LABELS, KIND_LABELS, isSavedView, isSecret, presentationOf, templateOf } from '../lib/presentation.ts';
-import { useApp } from '../context.ts';
+import { type KnowledgeRoute, type KnowledgeSection, useApp } from '../context.ts';
 import { type EditorHandle, Icon, MarkdownEditor, MarkdownView, ProjectSelect, TagEditor, Toggle, TypeIcon, useDraft, useFeedback } from '../ui.tsx';
+import { timestamp } from './KnowledgeCommon.tsx';
 import { AiEditDialog } from './AiEdit.tsx';
 import { ConnectionsSection, useReferences } from './Connections.tsx';
 import { VersionsPanel } from './History.tsx';
@@ -21,6 +22,59 @@ const InsightsSection = lazy(() => import('./Insights.tsx').then((module) => ({ 
 const ImageTextSection = lazy(() => import('./ImageText.tsx').then((module) => ({ default: module.ImageTextSection })));
 
 const STATUS_LABELS: Record<TaskStatus, string> = { open: 'Open', in_progress: 'In progress', done: 'Done', cancelled: 'Cancelled' };
+
+const DEFINITION_SECTIONS: Record<string, { section: KnowledgeSection; label: string }> = {
+  recipe: { section: 'recipes', label: 'a workflow' },
+  preference: { section: 'preferences', label: 'an organization preference' },
+  collection: { section: 'collections', label: 'a collection' },
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null);
+const asText = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+const asNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+
+/** Where this item opens in Research: the PDF or recording itself, or the page or moment a research note was saved from. */
+function researchLink(item: ItemDetail): { route: KnowledgeRoute; label: string } | null {
+  const mimeType = item.attachments[0]?.mimeType ?? '';
+  if (item.type === 'file' && (mimeType === 'application/pdf' || mimeType.startsWith('audio/'))) {
+    return { route: { view: 'knowledge', section: 'research', sourceId: item.id }, label: 'Open in Research' };
+  }
+  const research = asRecord(item.metadata.research);
+  if (item.type !== 'note' || !research) return null;
+  const page = asNumber(research.page);
+  const start = asNumber(research.start);
+  const quote = asText(research.quote);
+  switch (research.kind) {
+    case 'pdfAnnotation':
+    case 'pdfOcrPage': {
+      const sourceId = asText(research.sourceId);
+      return sourceId && page ? {
+        route: { view: 'knowledge', section: 'research', sourceId, page, ...(quote ? { quote } : {}) },
+        label: `Show page ${page} in Research`,
+      } : null;
+    }
+    case 'transcript': {
+      const sourceId = asText(research.sourceId);
+      return sourceId ? { route: { view: 'knowledge', section: 'research', sourceId, transcriptId: item.id }, label: 'Open with the recording' } : null;
+    }
+    case 'transcriptPassage': {
+      const sourceId = asText(research.audioId);
+      const transcriptId = asText(research.sourceId);
+      return sourceId && transcriptId && start !== undefined
+        ? { route: { view: 'knowledge', section: 'research', sourceId, transcriptId, start }, label: `Play from ${timestamp(start)}` }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** The Knowledge section that manages this definition note, if it is one. */
+function definitionLink(item: ItemDetail): { section: KnowledgeSection; label: string } | null {
+  if (item.metadata.knowledgeDefinition !== true) return null;
+  if (asRecord(item.metadata.watchedSource)) return { section: 'sources', label: 'a watched source' };
+  return DEFINITION_SECTIONS[String(asRecord(item.metadata.knowledge)?.kind)] ?? null;
+}
 
 export function ItemDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const live = useLive(() => call('items.get', id), [id]);
@@ -57,6 +111,8 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
   const template = templateOf(item);
   const savedView = isSavedView(item);
   const templatable = item.type === 'note' && !secret && !template && !savedView && !item.archivedAt;
+  const research = secret ? null : researchLink(item);
+  const definition = definitionLink(item);
 
   const fail = (error: unknown) => toast(errorMessage(error), 'error');
   // Saved through the editor journal against the text this drawer loaded, so a newer edit elsewhere is never overwritten.
@@ -132,6 +188,7 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
           <button className="button small" onClick={() => setDialog('ai')}><Icon name="sparkle" size={14} /> Edit with AI…</button>
         )}
         {!secret && <button className="button small" onClick={() => setDialog('share')}><Icon name="share" size={14} /> Share…</button>}
+        {research && <button className="button small" onClick={() => go(research.route)}><Icon name="read" size={14} /> {research.label}</button>}
         {templatable && (
           <button
             className="button small"
@@ -155,6 +212,11 @@ function ItemBody({ item, onClose }: { item: ItemDetail; onClose: () => void }) 
       {savedView && (
         <p className="muted small">
           This note holds a saved view’s settings. <button className="link-button" onClick={() => go({ view: 'views', id: item.id })}>Open the view</button>
+        </p>
+      )}
+      {definition && (
+        <p className="muted small">
+          This note holds {definition.label}’s settings; edit it in Knowledge. <button className="link-button" onClick={() => go({ view: 'knowledge', section: definition.section })}>Open in Knowledge</button>
         </p>
       )}
 

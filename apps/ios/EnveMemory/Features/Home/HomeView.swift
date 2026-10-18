@@ -115,6 +115,8 @@ private struct LibraryShortcuts: View {
                 .accessibilityIdentifier("OpenSavedViews")
             FilterChip(title: "Templates", systemImage: "doc.on.doc", isSelected: false) { router.open(.templates) }
                 .accessibilityIdentifier("OpenTemplates")
+            FilterChip(title: "Knowledge", systemImage: "books.vertical", isSelected: false) { router.open(.knowledge) }
+                .accessibilityIdentifier("OpenKnowledge")
             FilterChip(title: "AI chat", systemImage: "bubble.left.and.text.bubble.right", isSelected: false) { router.open(.aiChat) }
                 .accessibilityIdentifier("OpenAIChat")
             FilterChip(title: "Saved chats", systemImage: "tray.full", isSelected: false) { router.open(.conversations) }

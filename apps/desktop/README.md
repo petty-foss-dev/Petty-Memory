@@ -125,3 +125,10 @@ The E2E suite uses a fresh temp library (`ENVE_MEMORY_HOME`), port `0`, semantic
 - The global shortcut isn't configurable from the UI; set `shortcut` in `desktop.json`.
 - Builds are ad-hoc signed and not notarized (see [Installers](#installers)).
 - The Intel Mac, Windows and Linux builds are untested. On an Intel Mac or under Rosetta 2, `verify:dist` checks the x64 build.
+
+
+## Knowledge workspace
+
+Open Knowledge for reusable AI workflows, explicitly selected organization preferences, typed collections, PDF/audio research, watched-source queues and information review. Every suggestion/import is reviewed before it changes ordinary content; originals and source locations are retained. Complex changes require the library host and are not queued offline.
+
+See [Knowledge workflows](../../docs/KNOWLEDGE_FEATURES.md) for examples, host speech-provider configuration, field/page/caption limits and device-local folder approval, and [verification](../../docs/KNOWLEDGE_VERIFICATION.md) for exercised journeys and remaining environment gates. Dictation still saves text only; Research recording separately offers explicit audio recording and Save/Discard.

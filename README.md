@@ -12,7 +12,7 @@
 <p align="center">
   Built-in AI chat answers questions, edits notes, suggests tasks and organizes topics across your library. Review changes before applying them, with selective acceptance and undo.<br>
   Daily review, connection and duplicate suggestions, image text and Enve book highlights work without AI.<br>
-  <a href="docs/AI_CHAT.md">AI chat guide</a> · <a href="docs/POWER_FEATURES.md">Everyday workflows</a>
+  <a href="docs/AI_CHAT.md">AI chat guide</a> · <a href="docs/KNOWLEDGE_FEATURES.md">Research and knowledge tools</a> · <a href="docs/POWER_FEATURES.md">Everyday workflows</a>
 </p>
 
 <p align="center">
@@ -98,6 +98,22 @@ The comparison above covers Daftak's 17 public feature groups. These additions g
 - **Connections and duplicate cleanup.** Unlinked mentions, related notes and possible duplicates are found without AI. Merges are previewed, keep the original note archived with its files, and can be undone.
 - **Enve book highlights.** Preview and import highlights, annotations and bookmarks from Enve Book Player's JSON or Markdown export. Importing again doesn't create duplicates. Enve's export has no book identifiers or source links, so there is no live sync or deep link back into a book.
 - **Getting started.** A first-run checklist on desktop, browser and iPhone. AI and accounts stay optional.
+
+The Knowledge workspace adds seven further workflows:
+
+- **Reusable AI commands.** Save a named instruction and scope, then run it against fresh notes. Review tasks, tags, reminders and briefs before Apply; guarded Undo remains available.
+- **Explicit organization preferences.** Save filing and organization instructions, optionally per project, and choose which ones each workflow or organization request should use.
+- **Typed collections.** Add text, number, date, checkbox and select fields, then use table, card or Kanban layouts with typed filtering and sorting.
+- **Audio research.** Record or import audio, preview/save timestamped captions, seek to cues and keep source-linked passages. Optional transcription uses a separately configured speech server with confirmation for each recording.
+- **PDF research.** Read and search by page, annotate exact passages, recognize scanned pages into reviewed text, and follow AI citations to a page or recording timestamp. Originals are retained.
+- **Watched sources.** Opt into checks for pages, RSS/Atom feeds or a locally approved folder. New and changed material waits for selected import or update, preserving originals and history.
+- **Information review.** Find older notes, mark them checked and review possible conflicts using exact quotes and separate dates. Explicitly choose which ordinary note supersedes another; AI never silently rewrites claims.
+
+[Knowledge workflows](docs/KNOWLEDGE_FEATURES.md) explains these features, limits and privacy boundaries. [Verification](docs/KNOWLEDGE_VERIFICATION.md) records their actual acceptance checks.
+
+| Typed collections | Reviewed AI workflows |
+|---|---|
+| ![Collection with typed fields in the packaged desktop app](docs/screenshots/knowledge/desktop-collections.png) | ![A saved workflow and selected organization preference in the browser](docs/screenshots/knowledge/browser-workflow.png) |
 
 [Everyday workflows](docs/POWER_FEATURES.md) explains each workflow, its limits and its privacy boundaries. [Verification](docs/POWER_VERIFICATION.md) records the checks for this batch; physical-device acceptance for microphone, camera and Vision text recognition is still outstanding.
 

@@ -40,7 +40,7 @@ The configured model provider receives the messages and the bounded excerpts nee
 
 Dictation fills the message draft. It never presses Send or applies a proposal. Stop listening, check the words, then send the request yourself.
 
-- **iPhone:** the app requests speech and microphone access when you tap Dictate. It requires on-device recognition when the selected language supports it; otherwise it explains that Apple's speech service processes the audio. Leaving the screen or backgrounding the app stops listening. Petty Memory does not save audio.
+- **iPhone:** the app requests speech and microphone access when you tap Dictate. It requires on-device recognition when the selected language supports it; otherwise it explains that Apple's speech service processes the audio. Leaving the screen or backgrounding the app stops listening. Dictation does not save audio; [Research recording](KNOWLEDGE_FEATURES.md#audio-and-meeting-research) has its own recording and explicit save flow.
 - **Supporting browsers:** the Web Speech API provides Dictate and Stop with interim words and permission/error messages. The browser's speech service may process audio remotely. Browser and language support vary.
 - **Desktop and unsupported browsers:** use operating-system dictation in the message field. The UI explains this fallback when in-app recognition is unavailable or blocked. On macOS use your configured Dictation shortcut; on Windows use Windows key + H.
 

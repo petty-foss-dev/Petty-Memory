@@ -69,7 +69,7 @@ Speech recognition is done by your platform, not by your configured AI provider,
 - **Supporting browsers** use the Web Speech API. The browser's speech service may process audio remotely.
 - **Desktop and other browsers** explain how to use operating-system dictation in the text field instead.
 
-Petty Memory doesn't save audio. Dictation stops when you leave the screen or the app goes to the background. See [AI_CHAT.md](AI_CHAT.md#dictation) for dictating chat messages.
+Dictation doesn't save audio. It stops when you leave the screen or the app goes to the background. [Research recording](KNOWLEDGE_FEATURES.md#audio-and-meeting-research) separately lets you record and explicitly save audio. See [AI_CHAT.md](AI_CHAT.md#dictation) for dictating chat messages.
 
 ## Text from images
 

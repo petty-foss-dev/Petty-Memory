@@ -1,4 +1,7 @@
 export { EnveMemory, type OpenOptions } from './memory.ts';
+export * from './knowledge.ts';
+export * from './research.ts';
+export * from './sources.ts';
 export type { ActionService, ActionOperation, ActionProposal, ActionReceipt, ActionResult, ActionScope, ActionScopeInput } from './actions.ts';
 export type { ConversationService, ConversationMode, ConversationMessage, SavedConversation, SaveConversationInput } from './conversations.ts';
 export type { ReviewService, ReviewCard, ReviewQueueOptions, ReviewSchedule } from './review.ts';

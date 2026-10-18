@@ -2,6 +2,8 @@ import { can, del, enc, get, post, query } from './api.js';
 import { answerNote, chatMessages, chatTitle, draftProblem, savedMessages, savedTurns } from './conversation.js';
 import { referenceLink, showProposal } from './detail.js';
 import { clear, confirmDialog, empty, errorBox, h, loading, promptDialog, when } from './dom.js';
+import { createPreferenceChooser } from './knowledge-preferences.js';
+import { formatTime } from './knowledge-research.js';
 import { displayTitle } from './text.js';
 import { pickItem } from './picker.js';
 import { DICTATION_NOTE, appendDictation, createDictation, platformOf, speechRecognizer, systemDictationHelp } from './voice.js';
@@ -31,9 +33,18 @@ function cited(text, sources, open) {
     const n = /^\[(\d+)\]$/.exec(part)?.[1];
     const source = n ? byNumber.get(Number(n)) : undefined;
     return source
-      ? h('button', { type: 'button', class: 'ref cite', title: source.title || source.url || '', onClick: () => open(source.id) }, n)
+      ? h('button', { type: 'button', class: 'ref cite', title: source.title || source.url || '', onClick: () => open(source) }, n)
       : part;
   }))));
+}
+
+/** A cited PDF page or recording time, when the source carries a usable locator. */
+function researchLocator(source) {
+  const { locator } = source;
+  if (!locator || typeof locator.sourceId !== 'string') return null;
+  if (locator.kind === 'pdf' && Number.isInteger(locator.page)) return locator;
+  if (locator.kind === 'audio' && Number.isFinite(locator.start)) return locator;
+  return null;
 }
 
 /** The proposed hierarchy with a checkbox per moved branch; only Apply changes anything. */
@@ -134,7 +145,7 @@ function actionView(operation, open) {
 }
 
 /** Proposed tasks, tags, reminders and notes with a checkbox each; the ticked ones apply together, then a guarded undo is offered. */
-function showActions(out, proposal, { changed, open, onDiscard }) {
+export function showActions(out, proposal, { changed, open, onDiscard }) {
   const selected = new Set(proposal.operations.map((operation) => operation.id));
   let working = false;
   const choices = [];
@@ -208,6 +219,10 @@ export function createChatView(ctx) {
   let savedTimer = null;
   const Recognition = speechRecognizer(window);
   const writable = can('write');
+  const preferences = writable ? createPreferenceChooser({
+    legend: 'Organization preferences for this request',
+    hint: 'Only the saved preferences you tick are sent, and only with Organize. Project preferences are offered for workflows in that project.',
+  }) : null;
 
   const disclosure = h('p', { class: 'hint' });
   const unavailable = h('div');
@@ -278,6 +293,10 @@ export function createChatView(ctx) {
     targetButton.textContent = target ? `Notes: ${target.title}` : mode === 'edit' ? 'Choose notes to change…' : 'Choose notes to work from…';
     editHint.hidden = mode !== 'edit';
     organizeHint.hidden = mode !== 'organize';
+    if (preferences) {
+      preferences.el.hidden = mode !== 'organize';
+      preferences.setDisabled(busy);
+    }
     show(actionsHint, mode === 'actions'
       ? `The AI suggests tasks, tags, reminders and a brief from ${fromTopic() ? 'notes about the topic' : 'the chosen note and everything inside it'}. You choose which to apply, and can undo them afterwards. It never deletes or moves anything.`
       : '');
@@ -343,6 +362,11 @@ export function createChatView(ctx) {
 
   function answerTurn(reply, question) {
     const { answer, sources } = reply.answer;
+    const openSource = (source) => {
+      const locator = researchLocator(source);
+      if (locator) ctx.openResearch(locator);
+      else ctx.select(source.id);
+    };
     const save = writable ? h('button', { type: 'button', class: 'btn small', onClick: async () => {
       save.disabled = true;
       try {
@@ -358,10 +382,15 @@ export function createChatView(ctx) {
       }
     } }, 'Save as note') : null;
     return h('li', { class: 'chat-turn assistant' }, h('div', { class: 'answer' },
-      cited(answer, sources, (id) => ctx.select(id)),
-      sources.length ? h('ol', { class: 'sources', 'aria-label': 'Sources' }, sources.map((source) => h('li', null,
-        h('button', { type: 'button', class: 'link-btn', onClick: () => ctx.select(source.id) },
-          h('span', { class: 'ref' }, String(source.n)), ' ', source.title || source.url || `Untitled ${source.type}`)))) : null,
+      cited(answer, sources, openSource),
+      sources.length ? h('ol', { class: 'sources', 'aria-label': 'Sources' }, sources.map((source) => {
+        const locator = researchLocator(source);
+        return h('li', null,
+          h('button', { type: 'button', class: 'link-btn', onClick: () => openSource(source) },
+            h('span', { class: 'ref' }, String(source.n)), ' ', source.title || source.url || `Untitled ${source.type}`,
+            locator ? h('span', { class: 'hint' }, locator.kind === 'pdf' ? ` · page ${locator.page}` : ` · at ${formatTime(locator.start)}`) : null),
+          locator ? h('button', { type: 'button', class: 'btn small', 'aria-label': `Open the note for source ${source.n}`, onClick: () => ctx.select(source.id) }, 'Note') : null);
+      })) : null,
       save ? h('div', { class: 'actions' }, save) : null));
   }
 
@@ -430,7 +459,8 @@ export function createChatView(ctx) {
     if (problem) return show(error, problem);
     const run = generation;
     const { messages, dropped } = chatMessages(turns, text);
-    const request = { mode, messages, ...scopeFields() };
+    const chosen = mode === 'organize' ? preferences?.selected() ?? [] : [];
+    const request = { mode, messages, ...scopeFields(), ...(chosen.length ? { preferences: chosen } : {}) };
     const pending = [userTurn(text), h('li', { class: 'chat-turn assistant hint', role: 'status' }, 'Thinking…')];
     sending = true;
     message.value = '';
@@ -633,7 +663,7 @@ export function createChatView(ctx) {
       actionScope, topic, project, targetButton,
       h('span', { class: 'chat-scope-end' }, savedButton, saveButton, savedLabel, newChat)),
     writable ? null : h('p', { class: 'hint' }, 'Changing notes needs a token with the write scope; this one can only ask.'),
-    savedPanel, editHint, organizeHint, actionsHint, restartHint, notice, starters, trimmed, log,
+    savedPanel, editHint, organizeHint, preferences?.el, actionsHint, restartHint, notice, starters, trimmed, log,
     h('form', { class: 'chat-form', onSubmit: (event) => { event.preventDefault(); send(); } },
       message, error,
       h('div', { class: 'actions' }, dictate, stop, recording, sendButton),
@@ -678,6 +708,7 @@ export function createChatView(ctx) {
       : `Ask about what you’ve saved, or ask for changes to notes you choose. Uses ${name}${status.model ? ` (${status.model})` : ''}, set up on the server.`);
     unavailable.replaceChildren();
     body.hidden = false;
+    preferences?.load(null);
     render();
   }
 

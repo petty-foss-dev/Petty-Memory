@@ -30,8 +30,8 @@ final class Dictation {
             return "Dictation isn't available for \(language). The keyboard's microphone may still work."
         }
         return recognizer.supportsOnDeviceRecognition
-            ? "Speech is turned into text on this iPhone. Petty Memory doesn't save audio, and nothing reaches your computer until you send or save."
-            : "For \(language), Apple's speech service turns speech into text, so your voice is sent to Apple. Petty Memory doesn't save audio, and nothing reaches your computer until you send or save."
+            ? "Speech is turned into text on this iPhone. Dictation doesn't save audio, and nothing reaches your computer until you send or save."
+            : "For \(language), Apple's speech service turns speech into text, so your voice is sent to Apple. Dictation doesn't save audio, and nothing reaches your computer until you send or save."
     }
 
     private var language: String {

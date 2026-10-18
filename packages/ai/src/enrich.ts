@@ -29,6 +29,8 @@ interface Reply {
 /** Asks the provider for a summary and filing suggestions. Failures are recorded on the item, not thrown. */
 export async function enrichItem(memory: EnveMemory, provider: AiProvider, id: string): Promise<ItemDetail> {
   const item = memory.items.get(id);
+  if (item.metadata.secret === true || item.metadata.knowledgeDefinition === true
+    || memory.outline.ancestors(item.id).some((ancestor) => ancestor.metadata.knowledgeDefinition === true)) return item;
   const projects = memory.projects.list();
   const tags = memory.stats().tagNames.slice(0, 200);
   const at = new Date().toISOString();

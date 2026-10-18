@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Knowledge workspace on desktop, browser and iPhone: reusable AI workflows with fresh reviewed actions; explicit project-scoped organization preferences; typed collections with table/cards/Kanban, filtering and sorting; recording/caption/transcript research; exact-page PDF annotations and scanned-page text; opt-in watched-source review queues; and source-grounded freshness/conflict review.
+- Cited answers retain PDF page and audio timestamp locators and respect explicitly superseded ordinary notes. Definition trees are excluded before retrieval ranking.
+- Optional separately configured speech transcription with per-recording confirmation; recordings and captions work without a provider. Originals and provenance are retained; no speech model downloads.
+- Host-only folder approval, selected stale-checked imports, immutable changed-file snapshots, and fresh folder approval after backup restore. See [Knowledge workflows](docs/KNOWLEDGE_FEATURES.md) and [verification](docs/KNOWLEDGE_VERIFICATION.md).
+
 - Saved AI chats, opt in per conversation: save, search, reopen, continue, update and archive. Saved chats are ordinary plaintext notes (at most 100 messages and 200,000 characters) that sync and export. Unsaved chats are still not stored. Any cited answer can be saved as a note with its sources as item references.
 - Suggested actions in AI chat: tasks, tags, reminders and a brief from a branch or keyword topic. Operations are previewed individually and selected ones apply atomically. Stale proposals are refused, and Undo is refused over newer work.
 - Topic organization adds up to 50 notes found by meaning, marked Suggested, to the complete keyword matches. It falls back to keyword matches only when semantic search is unavailable.

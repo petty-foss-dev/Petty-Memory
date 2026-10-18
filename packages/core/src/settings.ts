@@ -17,6 +17,8 @@ export interface Settings {
   aiEnrichSince: string;
   /** Apply suggested tags and project straight away instead of waiting for the user to accept them. */
   aiAutoApply: boolean;
+  transcriptionBaseUrl: string;
+  transcriptionModel: string;
   /** Shared folder (iCloud Drive, Dropbox, Syncthing…) to sync this library through; empty means off. */
   syncFolder: string;
 }
@@ -30,6 +32,8 @@ const DEFAULTS: Settings = {
   aiEnrich: false,
   aiEnrichSince: '',
   aiAutoApply: false,
+  transcriptionBaseUrl: '',
+  transcriptionModel: '',
   syncFolder: '',
 };
 

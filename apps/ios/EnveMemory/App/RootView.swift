@@ -127,6 +127,12 @@ struct MainView: View {
             case .conversations: SavedChatsView()
             case .review: DailyReviewView()
             case .enveImport: EnveImportView()
+            case .knowledge: KnowledgeHubView()
+            case .knowledgeArea(let area): KnowledgeAreaView(area: area)
+            case .collection(let id): CollectionDetailView(collectionID: id)
+            case .research(let location): ResearchSourceView(location: location)
+            case .transcript(let id): TranscriptDetailView(transcriptID: id)
+            case .watchedSource(let id): WatchedSourceView(sourceID: id)
             }
         }
         .id(route)

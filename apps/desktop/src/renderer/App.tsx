@@ -25,6 +25,7 @@ const Ask = lazy(() => import('./views/Ask.tsx').then((module) => ({ default: mo
 const Review = lazy(() => import('./views/Review.tsx').then((module) => ({ default: module.Review })));
 const SavedViews = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.SavedViews })));
 const Templates = lazy(() => import('./views/Workflows.tsx').then((module) => ({ default: module.Templates })));
+const Knowledge = lazy(() => import('./views/Knowledge.tsx').then((module) => ({ default: module.Knowledge })));
 
 const isMac = window.enve.platform === 'darwin';
 const mod = (event: KeyboardEvent) => (isMac ? event.metaKey : event.ctrlKey);
@@ -202,6 +203,7 @@ export function App() {
             {nav({ view: 'graph' }, 'graph', 'Graph')}
             {nav({ view: 'views' }, 'filter', 'Saved views')}
             {nav({ view: 'templates' }, 'template', 'Templates')}
+            {nav({ view: 'knowledge' }, 'text', 'Knowledge')}
             <div className="nav-heading"><span>Shelves</span></div>
             {nav({ view: 'highlights' }, 'star', 'Highlights')}
             {SHELVES.map((shelf) => nav({ view: 'shelf', shelf }, shelf === 'pinned' ? 'pin' : shelf, SHELF_COPY[shelf].title, shelves.data?.[shelf]))}
@@ -230,6 +232,7 @@ export function App() {
             {route.view === 'review' && <Review />}
             {route.view === 'views' && <SavedViews id={route.id} />}
             {route.view === 'templates' && <Templates />}
+            {route.view === 'knowledge' && <Knowledge route={route} />}
           </Suspense>
           {route.view === 'settings' && <Settings section={route.section} />}
         </main>

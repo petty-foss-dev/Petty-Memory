@@ -84,11 +84,11 @@ const MIN_DUPLICATE = 0.6;
 const MIN_DUPLICATE_WORDS = 3;
 
 const TEMPLATE_MEMBERS = `WITH RECURSIVE template_members(id) AS (
-  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL
+  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
   UNION SELECT c.id FROM items c JOIN template_members m ON c.parent_id = m.id
 )`;
 const DISCOVERABLE = `i.type != 'decision' AND i.archived_at IS NULL AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0
-  AND json_extract(i.metadata, '$.savedView') IS NULL AND json_extract(i.metadata, '$.conversation') IS NULL
+  AND json_extract(i.metadata, '$.savedView') IS NULL AND json_extract(i.metadata, '$.conversation') IS NULL AND coalesce(json_extract(i.metadata, '$.knowledgeDefinition'), 0) = 0
   AND i.id NOT IN (SELECT id FROM template_members)`;
 const DOC_COLUMNS = `i.id, i.type, i.title, substr(i.body, 1, ${BODY_SCAN}) AS body, substr(coalesce(i.content, ''), 1, ${CONTENT_SCAN}) AS content, i.url`;
 
@@ -275,7 +275,7 @@ export class InsightService {
     const { parent_id } = this.ctx.get<{ parent_id: string | null }>(`SELECT parent_id FROM items WHERE id = ?`, row.id)!;
     const metadata = JSON.parse(row.metadata) as ItemMetadata;
     if (row.type !== 'note' || row.archived_at !== null || metadata.secret === true || metadata.savedView != null
-      || metadata.conversation != null || inTemplate(this.ctx, row.id)) {
+      || metadata.conversation != null || metadata.knowledgeDefinition === true || inTemplate(this.ctx, row.id)) {
       throw invalid('Only active, ordinary notes can be merged. Decisions, tasks, links, files, secret notes, saved conversations, saved views and templates can’t.');
     }
     if (parent_id !== null) {
@@ -289,7 +289,7 @@ export class InsightService {
     const row = this.items.row(id);
     const metadata = JSON.parse(row.metadata) as ItemMetadata;
     if (row.archived_at !== null || row.type === 'decision' || metadata.secret === true || metadata.savedView != null
-      || metadata.conversation != null || inTemplate(this.ctx, row.id)) {
+      || metadata.conversation != null || metadata.knowledgeDefinition === true || inTemplate(this.ctx, row.id)) {
       throw invalid('Connections are suggested only for active, ordinary items. Decisions, secret notes, saved conversations, saved views and templates are left out.');
     }
     return this.ctx.get<DocRow>(`SELECT ${DOC_COLUMNS} FROM items i WHERE i.id = ?`, row.id)!;
@@ -436,7 +436,7 @@ const suggestions = (candidates: Candidate[]): KnowledgeSuggestion[] => candidat
 const score = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;
 const joined = (a: string, b: string, separator: string) => [a, b].filter((part) => part.trim()).join(separator);
 const inTemplate = (ctx: Context, id: string) => ctx.get(
-  `SELECT 1 FROM items WHERE id IN (SELECT value FROM json_each(?)) AND json_extract(metadata, '$.template') IS NOT NULL`,
+  `SELECT 1 FROM items WHERE id IN (SELECT value FROM json_each(?)) AND (json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1)`,
   JSON.stringify(pathToRoot(ctx, id)),
 ) !== undefined;
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);

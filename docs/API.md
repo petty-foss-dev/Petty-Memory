@@ -56,7 +56,7 @@ Errors are `{"error": {"code", "message"}}` with the status: `401 unauthorized`,
 | `GET /outline/:id/ancestors` | read | Ancestor items ordered from root to direct parent, excluding the item itself |
 | `POST /outline` | capture | `{id?: UUIDv7, parentId?: id \| null, title?, body?, project?, tags?}` → outline entry. A nonempty title or body is required. Creates and nests the note atomically. |
 | `GET /capabilities` | read | API/schema versions and supported feature names. |
-| `GET /library?cursor=&limit=` | read | Paged ordinary library replica, projects, relations and deletions; secret items are evicted, never copied. |
+| `GET /library?cursor=&limit=` | read | Paged ordinary library replica, projects, relations and deletions; secret items are evicted, never copied. Batches stop between items around 8 MiB; one item is never split. |
 | `GET /changes?since=&wait=25000` | read | `{revision, deviceId}`; bounded foreground long-poll notification. |
 | `POST /editor/actions` | write | `{commands, id?: UUIDv7}` → `{actionId, focusId, createdIds, label}`. Atomic create/update/move/style/check/split/merge batch; retrying the same id is idempotent. |
 | `POST /editor/actions/:id/undo` and `/redo` | write | Restores the action's fields if they still match its expected state; stale actions return 409. Split offsets are UTF-16 code units. |
@@ -185,3 +185,48 @@ Outline operations preserve existing item identities and content. Nesting is sep
 ## Pairing links
 
 `enve-memory://pair?url=<base URL>&token=<token>&name=<device name>`: shown as a QR code by the desktop app and printed by `petty-memory clients pair`. CLI pairing tokens get `read` and `write`; `--scope secrets` adds the vault scope.
+
+
+## Knowledge workspace
+
+These routes are below `/api/v1/knowledge`. All require `read`; mutations and provider/recognition requests also require `write`. Run/preview/analyze/recognition/transcription routes are transient and never enter the HTTP replay cache. The desktop uses the same handlers through its allow-listed `knowledge.request` bridge.
+
+| Routes | Purpose |
+|---|---|
+| `GET/POST /recipes`, `GET/DELETE /recipes/:id` | List, save (optional `id` updates), read and archive named instructions/scopes |
+| `POST /recipes/:id/run` | `{preferences?:string[]}` → ordinary `ChatResponse.actions`; fresh scope, no apply |
+| `GET/POST /preferences`, `GET/DELETE /preferences/:id` | Explicit instructions, optional project; list accepts `project` |
+| `GET/POST /collections`, `GET/DELETE /collections/:id` | Typed collection definitions; optional `id` updates |
+| `GET /collections/:id/rows` | `offset`, `limit`, optional `group` (`__unset` for no value); rows, groups, matched/evaluated/capped counts |
+| `POST /collections/:id/values` | `{itemId,values:{fieldIdOrKey:valueOrNull}}`; merge/clear typed values |
+| `GET /research/sources` | PDF/audio file items, cursor `before`, returned `next` |
+| `GET /research/pdf/:id` | Source hash, page/text counts, truncation and recognition state |
+| `GET /research/pdf/:id/pages` | `from`, `limit` ≤50; page text and reviewed OCR overlays |
+| `GET /research/pdf/:id/find` | `q`, optional `limit`; exact page positions |
+| `POST /research/pdf/:id/index` | Index or reindex retained original PDF bytes |
+| `POST /research/annotations` | `{sourceId,page,sha256,quote,note?,textSource?,occurrence?,project?,tags?}` |
+| `GET /research/pdf/:id/annotations`, `GET /research/annotations/:id` | Source annotations or one revalidated locator/status |
+| `POST /research/ocr` | `{sourceId,page,sha256,png}`; base64 selected-page PNG, no data-URL prefix, returns editable recognition draft without saving |
+| `POST /research/ocr-pages` | `{sourceId,page,sha256,text,engine?}`; explicitly save reviewed page text |
+| `GET /research/audio/:id` | Saved transcript summaries for an ordinary recording |
+| `POST /research/transcripts/preview` | `{audioId,data,format?}`; parse captions and bind to immutable recording |
+| `POST /research/transcripts` | `{audioId,segments,format,engine?,fingerprint,title?,project?,tags?}`; repeat-safe explicit save |
+| `GET /research/transcripts/:id` | Validated timed transcript and recording availability |
+| `GET /research/transcripts/:id/passages` | Saved passage notes |
+| `POST /research/passages` | `{transcriptId,fingerprint,from,to,note?,tags?}`; inclusive cue indexes |
+| `GET /research/audio-locator/:id` | Optional `segment`; recording attachment/hash/start/end for a transcript or passage |
+| `GET /research/transcription` | Safe host configuration status (no key) |
+| `POST /research/transcribe` | `{audioId,confirmed:true}`; send only to the host-configured speech endpoint and return a preview |
+| `GET/POST /sources`, `GET/PATCH/DELETE /sources/:id` | Watch definitions; no folder path accepted |
+| `GET /sources/:id/queue`, `POST /sources/:id/check` | Read or refresh local source candidates; checking never imports |
+| `POST /sources/:id/apply` | `{candidateIds}`; revalidate and atomically apply selected candidates |
+| `POST /sources/:id/revoke-folder` | Forget an existing host approval, never grant a new one |
+| `GET /freshness/stale` | `days`, optional `project` or `rootId`; age queue, source dates and state hashes |
+| `POST /freshness/analyze` | `{rootId?}` or `{query?,project?}` → `FreshnessProposal` with scanned/rejected/dismissed counts, exact evidence, no automatic writes |
+| `POST /freshness/check` | `{id,stateHash}`; record an explicit freshness check |
+| `POST /freshness/dismiss` | `{refs:[{id,stateHash},{id,stateHash}]}`; retain both notes |
+| `POST /freshness/supersede` | `{newer:{id,stateHash},older:{id,stateHash}}`; ordinary notes only |
+
+AI chat's organize mode accepts optional `preferences:string[]` of explicitly selected global preference ids. Cited answers may add a source `locator:{kind:'pdf'|'audio',sourceId,sha256,page?,start?,end?,quote}`. Ordinary sources omit the locator. `FreshnessEvidence` contains verified item id/title/type, exact quote, dates and state hash; a suggestion's reason remains advisory.
+
+Limits and examples: [Knowledge workflows](KNOWLEDGE_FEATURES.md). No new MCP destructive tools or arbitrary host-file HTTP endpoints were added.

@@ -1,6 +1,6 @@
 import type { SQLInputValue } from 'node:sqlite';
 import {
-  type Context, ITEM_COLUMNS, ITEM_FROM, type ItemRow, newId, normalizeTag, oneOf, required, toItem, toTaskFields,
+  type Context, ITEM_COLUMNS, ITEM_FROM, type ItemRow, newId, normalizeTag, oneOf, required, toItem, toSummaryItem, toTaskFields,
 } from './context.ts';
 import { MemoryError, invalid, notFound } from './errors.ts';
 import { type AttachmentRow, removeBlobIfUnused, toAttachment } from './blobs.ts';
@@ -34,6 +34,7 @@ export interface ItemFilter {
   secret?: boolean;
   /** Only tasks with this status. */
   taskStatus?: string;
+  excludeDefinitions?: boolean;
 }
 
 export interface NewItem {
@@ -196,7 +197,7 @@ export class ItemService {
          ORDER BY i.remind_at`,
         now.toISOString(),
       )
-      .map(toItem));
+      .map(toSummaryItem));
   }
 
   /** Marks a reminder delivered so it fires once; it stays listed until cleared or rescheduled. */
@@ -317,10 +318,14 @@ export class ItemService {
     if (!since) return [];
     return this.ctx
       .all<{ id: string }>(
-        `SELECT id FROM items
+        `WITH RECURSIVE definitions(id) AS (
+           SELECT id FROM items WHERE coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
+           UNION SELECT i.id FROM items i JOIN definitions d ON i.parent_id = d.id
+         ) SELECT id FROM items
          WHERE created_at >= ? AND archived_at IS NULL AND type IN ('note', 'bookmark', 'file', 'image')
            AND json_extract(metadata, '$.ai') IS NULL AND json_extract(metadata, '$.secret') IS NULL
            AND json_extract(metadata, '$.aiAction') IS NULL AND json_extract(metadata, '$.conversation') IS NULL
+           AND id NOT IN (SELECT id FROM definitions)
            AND coalesce(json_extract(metadata, '$.ingest.status'), 'done') != 'pending'
          ORDER BY seq LIMIT ?`,
         since, limit,
@@ -362,7 +367,7 @@ export class ItemService {
          ORDER BY ${filter.reminders ? 'i.remind_at, ' : filter.pinned ? 'i.pinned_at DESC, ' : ''}i.updated_at DESC, i.id DESC LIMIT ?`,
         ...params, clampLimit(limit),
       )
-      .map(toItem));
+      .map(toSummaryItem));
   }
 
   /** Fills in tags for a page of items with one query. */
@@ -422,6 +427,7 @@ export class ItemService {
       adoptChildren(this.ctx, row.id);
       this.ctx.run(`DELETE FROM sync_pending WHERE kind = 'item_parent' AND key = ?`, row.id);
       this.ctx.run(`DELETE FROM items WHERE id = ?`, row.id);
+      this.ctx.run(`DELETE FROM settings WHERE key IN (?, ?)`, `sources.folder.${row.id}`, `sources.queue.${row.id}`);
       this.ctx.record('item', row.id, 'delete', row.project_id, { type: row.type, title: row.title });
     });
     for (const { sha256 } of blobs) removeBlobIfUnused(this.ctx, sha256);
@@ -506,6 +512,13 @@ export class ItemService {
     if (filter.inbox) where.push('i.project_id IS NULL');
     if (filter.pinned) where.push('i.pinned_at IS NOT NULL');
     if (filter.reminders) where.push('i.remind_at IS NOT NULL');
+    if (filter.excludeDefinitions) where.push(`i.id NOT IN (
+      WITH RECURSIVE definitions(id) AS (
+        SELECT id FROM items WHERE coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
+          OR json_extract(metadata, '$.template') IS NOT NULL
+        UNION SELECT child.id FROM items child JOIN definitions d ON child.parent_id = d.id
+      ) SELECT id FROM definitions
+    )`);
     if (filter.intent !== undefined) {
       where.push('i.intent = ?');
       params.push(oneOf(filter.intent, INTENTS, 'intent'));

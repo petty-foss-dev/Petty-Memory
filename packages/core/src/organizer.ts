@@ -74,11 +74,11 @@ const EXCERPT = 500;
 
 // Saved views and everything inside a template branch are definitions, not library notes.
 const TEMPLATE_MEMBERS = `WITH RECURSIVE template_members(id) AS (
-  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL
+  SELECT id FROM items WHERE json_extract(metadata, '$.template') IS NOT NULL OR coalesce(json_extract(metadata, '$.knowledgeDefinition'), 0) = 1
   UNION SELECT c.id FROM items c JOIN template_members m ON c.parent_id = m.id
 )`;
 const ORDINARY_NOTE = `i.type = 'note' AND i.archived_at IS NULL AND coalesce(json_extract(i.metadata, '$.secret'), 0) = 0
-  AND json_extract(i.metadata, '$.savedView') IS NULL AND json_extract(i.metadata, '$.conversation') IS NULL
+  AND json_extract(i.metadata, '$.savedView') IS NULL AND json_extract(i.metadata, '$.conversation') IS NULL AND coalesce(json_extract(i.metadata, '$.knowledgeDefinition'), 0) = 0
   AND i.id NOT IN (SELECT id FROM template_members)`;
 
 interface CandidateRow {

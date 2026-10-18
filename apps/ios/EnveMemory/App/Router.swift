@@ -56,6 +56,13 @@ enum Route: Hashable {
     case conversations
     case review
     case enveImport
+    case knowledge
+    case knowledgeArea(KnowledgeArea)
+    case collection(String)
+    /// An original PDF or recording, opened at a page or a time.
+    case research(ResearchLocation)
+    case transcript(String)
+    case watchedSource(String)
 }
 
 enum CaptureKind: String, CaseIterable, Identifiable {

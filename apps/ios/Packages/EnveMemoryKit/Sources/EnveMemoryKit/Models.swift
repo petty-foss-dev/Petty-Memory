@@ -137,6 +137,7 @@ public struct ItemMetadata: Codable, Hashable, Sendable {
     public var template: TemplateMetadata?
     public var enveHighlight: EnveHighlight?
     public var conversation: JSONValue?
+    public var research: JSONValue?
 
     public init() {}
 }

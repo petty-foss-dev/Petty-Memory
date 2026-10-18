@@ -1,5 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
-import { type Context, ITEM_COLUMNS, clientId, ITEM_FROM, type ItemRow, toItem, toTaskFields } from './context.ts';
+import { type Context, ITEM_COLUMNS, clientId, ITEM_FROM, type ItemRow, toSummaryItem, toTaskFields } from './context.ts';
 import { invalid, notFound } from './errors.ts';
 import { type ItemService, clampLimit } from './items.ts';
 import { assertParent, pathToRoot, place, slots } from './placement.ts';
@@ -87,7 +87,7 @@ export class OutlineService {
     const rows = this.ctx.all<ItemRow>(
       `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id IN (SELECT value FROM json_each(?))`, JSON.stringify(path),
     );
-    const byId = new Map(this.items.withTags(rows.map(toItem)).map((item) => [item.id, item]));
+    const byId = new Map(this.items.withTags(rows.map(toSummaryItem)).map((item) => [item.id, item]));
     return path.map((ancestor) => byId.get(ancestor)!);
   }
 
@@ -129,7 +129,7 @@ export class OutlineService {
   }
 
   private entries(rows: EntryRow[]): OutlineEntry[] {
-    const items = this.items.withTags(rows.map(toItem));
+    const items = this.items.withTags(rows.map(toSummaryItem));
     return rows.map((row, i) => ({ item: { ...items[i]!, task: toTaskFields(row) }, parentId: row.parent_id, position: row.sort_order, childCount: row.child_count }));
   }
 }

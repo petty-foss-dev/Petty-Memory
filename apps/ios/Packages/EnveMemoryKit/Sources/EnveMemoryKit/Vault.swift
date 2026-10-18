@@ -175,6 +175,6 @@ extension Endpoint {
     /// Vault, share-creation, AI, saved-chat, review, insight, import and OCR calls are online-only; the outbox refuses them.
     public var isOnlineOnly: Bool {
         path.hasPrefix("/vault") || path.hasPrefix("/ai/") || (method == "POST" && path == "/shares")
-            || ["/conversations", "/review", "/insights/", "/imports/"].contains { path.hasPrefix($0) } || path == "/capture/ocr"
+            || ["/conversations", "/review", "/insights/", "/imports/", "/knowledge"].contains { path.hasPrefix($0) } || path == "/capture/ocr"
     }
 }

@@ -97,3 +97,18 @@ The daily knowledge layer adds versioned metadata without a migration:
 - `aiAction`: `{version:1,actionId}` marks generated tasks and brief notes. It prevents automatic enrichment from altering a just-applied action's Undo guard.
 
 Action apply/Undo records (`ai_actions`, `ai_actions_undo`) keep the result, selected operation hash, before-state and original guard in the local change log. Another device receives ordinary resulting content through sync; these local action receipts do not become cross-device Undo authority.
+
+
+## Knowledge metadata
+
+No migration is needed. Definition notes carry `knowledgeDefinition:true` and either `knowledge:{version:1,kind:'recipe'|'preference'|'collection',…}` or `watchedSource:{version:1,kind,url,project,enabled}`. Human-readable instruction/field bodies are secondary to the validated metadata. Definition trees are excluded before AI search ranking and from action, organization, review and connection sources.
+
+List, outline and collection summaries omit `pdfPages`; full item details, history, export and content sync retain it. Research lists also omit extracted `content`, and dedicated page endpoints return the requested range. Offline library batches stop between items around 8 MiB, advancing their cursor without splitting an item or dropping its full metadata.
+
+- `fieldValues[collectionId][fieldId]`: typed values on ordinary items; stable field/option ids preserve independent collections, removed fields and partial edits.
+- `pdfPages:{version:1,pageCount,pages,clipped,truncated}`: contiguous original page numbers with bounded source text. Blank pages remain in place.
+- `research:{version:1,kind,…}`: `transcript`, `transcriptPassage`, `pdfOcrPage` or `pdfAnnotation`. Records retain immutable source hash, timing/page/quote identity and ordinary source relations. Transcripts/passages/annotations are repeat-safe and source state is revalidated on read/save.
+- `watchedFrom`: provenance on accepted source material; changed files keep earlier snapshots and a supersedes relation. Device-local `sources.queue.<id>` tracks pending candidates, applied identities and target mappings; `sources.folder.<id>` holds approved paths and size/time/hash observations. These settings are not content sync/export. Backup restore clears `sources.*` before a restored library can scan host paths.
+- `freshness:{version:1,checkedAt?,dismissed?,supersededBy?,supersededAt?,lastReview?}`: explicit review state, with ordinary history/sync. Decisions remain append-only. Review actions require the source state hash and preserve text.
+
+Speech endpoint/model are device-local preferences; keys remain outside SQLite. Preview-only speech/OCR/AI results are not replay-cached. See [Knowledge workflows](KNOWLEDGE_FEATURES.md) for limits.

@@ -23,6 +23,7 @@ struct ItemDetailView: View {
     @State private var completing = false
     @State private var sheet: ItemSheet?
     @State private var extracting: Attachment?
+    @State private var research: ResearchLink?
 
     struct ItemSheet: Identifiable {
         enum Kind: String { case edit, ai, share, move, saveTemplate, useTemplate }
@@ -37,7 +38,7 @@ struct ItemDetailView: View {
             if let error { ErrorBanner(message: error) { Task { await load() } } }
             if let detail {
                 ItemDetailContent(detail: detail, note: note, content: content, references: references, progress: progress,
-                                  downloading: downloading, completing: completing, open: open, complete: complete,
+                                  research: research, downloading: downloading, completing: completing, open: open, complete: complete,
                                   extractText: { extracting = $0 })
                     .environment(\.referenceTitles, referenceTitles)
             } else if error == nil {
@@ -114,6 +115,7 @@ struct ItemDetailView: View {
             content = MarkdownDocument(loaded.value.content)
             error = nil
             guard !loaded.value.item.isSecret else { return }
+            research = ResearchLink.decode(fromMetadata: loaded.value.item.metadata.research)
             references = try? await connection.load(.references(itemID), as: ReferenceList.self).value
             if loaded.value.item.presentation.checklist {
                 progress = try? await connection.load(.checklist(itemID), as: ChecklistProgress.self).value
@@ -155,6 +157,7 @@ private struct ItemDetailContent: View {
     let content: MarkdownDocument
     let references: ReferenceList?
     let progress: ChecklistProgress?
+    let research: ResearchLink?
     let downloading: String?
     let completing: Bool
     let open: (Attachment) -> Void
@@ -174,6 +177,7 @@ private struct ItemDetailContent: View {
             SecretNoteCard(itemID: item.id)
         } else {
             WorkflowCard(item: item)
+            if let research { ResearchLinkCard(itemID: item.id, link: research) }
             if let task = item.task { taskCard(task) }
             if item.task == nil, item.type != .decision { OrganizeCard(item: item) }
             if let ai = item.metadata.ai, ai.isReady, ai.summary?.isEmpty == false || ai.isPending {
@@ -299,6 +303,13 @@ private struct ItemDetailContent: View {
                         }
                         .accessibilityLabel("Extract text")
                         .accessibilityIdentifier("AttachmentExtractText")
+                    }
+                    if attachment.isPDF || attachment.isAudio, item.archivedAt == nil {
+                        Button { router.open(.research(ResearchLocation(sourceId: item.id))) } label: {
+                            Image(systemName: "doc.text.magnifyingglass").foregroundStyle(hearth.accent)
+                        }
+                        .accessibilityLabel(attachment.isPDF ? "Read and annotate" : "Play with transcripts")
+                        .accessibilityIdentifier("AttachmentOpenResearch")
                     }
                 }
             }

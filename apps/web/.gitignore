@@ -1,3 +1,5 @@
 public/vendor/editor.js
 public/vendor/editor.css
 public/vendor/editor-licenses.txt
+public/vendor/pdfjs.mjs
+public/vendor/pdf-licenses.txt
