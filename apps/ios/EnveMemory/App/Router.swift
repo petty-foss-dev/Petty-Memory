@@ -38,6 +38,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 }
 
 enum Route: Hashable {
+    case library
     case item(String)
     case project(String)
     case shelf(Shelf)

@@ -183,6 +183,8 @@ Choose **Suggest actions** (Actions on iPhone) for tasks, tags, reminders or a b
 
 ### iPhone
 
+Home keeps quick capture, Ask AI, Library and recent notes in view. Open Library for the outline, daily review, shelves, saved views, templates and other tools.
+
 | Home | Outline | Formatted editor |
 |---|---|---|
 | ![iPhone home in the Petty dark palette](docs/screenshots/parity/ios-home-dark.png) | ![iPhone ordered outline](docs/screenshots/parity/ios-outline-dark.png) | ![iPhone formatted editor](docs/screenshots/parity/ios-editor-dark.png) |

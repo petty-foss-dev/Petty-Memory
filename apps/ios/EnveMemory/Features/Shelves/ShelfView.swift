@@ -118,37 +118,3 @@ struct NotificationPrompt: View {
         .accessibilityIdentifier("NotificationPrompt")
     }
 }
-
-/// What deserves a look again: review marks, high attention, and the revisit and unopened signals.
-struct SuggestionsSection: View {
-    @Environment(Router.self) private var router
-
-    var body: some View {
-        Overline("Suggestions")
-        FlowLayout(spacing: HearthSpacing.sm) {
-            ForEach(Shelf.suggestions) { shelf in
-                FilterChip(title: shelf.title, systemImage: shelf.symbol, isSelected: false) {
-                    router.open(.shelf(shelf))
-                }
-                .accessibilityIdentifier("Suggestion_\(shelf.id)")
-            }
-        }
-    }
-}
-
-/// The shelves as a grid of chips on Home.
-struct ShelvesSection: View {
-    @Environment(Router.self) private var router
-
-    var body: some View {
-        Overline("Shelves")
-        FlowLayout(spacing: HearthSpacing.sm) {
-            ForEach(Shelf.all) { shelf in
-                FilterChip(title: shelf.title, systemImage: shelf.symbol, isSelected: false) {
-                    router.open(.shelf(shelf))
-                }
-                .accessibilityIdentifier("Shelf_\(shelf.id)")
-            }
-        }
-    }
-}

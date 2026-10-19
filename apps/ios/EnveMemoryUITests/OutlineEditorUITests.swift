@@ -10,7 +10,7 @@ final class OutlineEditorUITests: MemoryUITestCase {
         let edited = "\(title) edited"
         let marker = String(Int.random(in: 10_000_000...99_999_999))
 
-        try require(element("OpenOutline"), "Home has no Outline shortcut.").tap()
+        try openLibraryTool("OpenOutline")
         let composer = element("OutlineComposer")
         try reveal(composer, "The outline has no composer.")
         composer.tap()

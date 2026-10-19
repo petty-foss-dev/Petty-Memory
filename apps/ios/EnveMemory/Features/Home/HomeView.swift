@@ -5,7 +5,6 @@ struct HomeView: View {
     @Environment(Connection.self) private var connection
     @Environment(OutboxService.self) private var outbox
     @Environment(Router.self) private var router
-    @Environment(\.hearth) private var hearth
 
     @State private var items: [Item] = []
     @State private var loadError: String?
@@ -18,28 +17,23 @@ struct HomeView: View {
 
     var body: some View {
         HearthScreen(title: "Home", overline: statusLine) {
+            if isUnauthorized { PairingNotice() }
             QuickCaptureBar()
             if outbox.pendingCount > 0 { OutboxBanner() }
+            HomeActions()
             if let cachedAt { CachedBanner(savedAt: cachedAt) }
-            if let loadError { ErrorBanner(message: loadError) { Task { await load() } } }
-            if loaded { GettingStartedCard(hasItems: !items.isEmpty) }
-            LibraryShortcuts()
-            SuggestionsSection()
-            ShelvesSection()
+            if let loadError, !isUnauthorized { ErrorBanner(message: loadError) { Task { await load() } } }
             recent
         }
         .refreshable { await load() }
         .task(id: connection.revision) { await load() }
     }
 
-    private var statusLine: String {
-        switch connection.status {
-        case .online(let server, _): "Connected · \(connection.pairing?.baseURL.host() ?? "") · v\(server.version)"
-        case .offline: "Offline"
-        case .unauthorized: "Pairing revoked"
-        case .unknown, .checking: "Connecting…"
-        }
+    private var statusLine: String? {
+        if case .offline = connection.status { "Offline" } else { nil }
     }
+
+    private var isUnauthorized: Bool { connection.status == .unauthorized }
 
     @ViewBuilder
     private var recent: some View {
@@ -47,7 +41,7 @@ struct HomeView: View {
         if items.isEmpty {
             if loaded, loadError == nil {
                 EmptyStateView(symbol: "tray", title: "Nothing saved yet",
-                               message: "Capture a note above, or share a link from Safari to Petty Memory.")
+                               message: "Type above to save a note or paste a link. Tap + for a task or photo, or share from any app.")
             }
         } else {
             RowStack(data: items) { item in
@@ -100,41 +94,12 @@ struct HomeView: View {
     }
 }
 
-/// The outline, daily review, saved views, templates and AI chat, plus the vault and public links when this phone may use them.
-private struct LibraryShortcuts: View {
-    @Environment(Router.self) private var router
-    @Environment(Connection.self) private var connection
-
-    var body: some View {
-        FlowLayout(spacing: HearthSpacing.sm) {
-            FilterChip(title: "Outline", systemImage: "list.bullet.indent", isSelected: false) { router.open(.outline(nil)) }
-                .accessibilityIdentifier("OpenOutline")
-            FilterChip(title: "Daily review", systemImage: "calendar.badge.clock", isSelected: false) { router.open(.review) }
-                .accessibilityIdentifier("OpenReview")
-            FilterChip(title: "Saved views", systemImage: "line.3.horizontal.decrease.circle", isSelected: false) { router.open(.savedViews) }
-                .accessibilityIdentifier("OpenSavedViews")
-            FilterChip(title: "Templates", systemImage: "doc.on.doc", isSelected: false) { router.open(.templates) }
-                .accessibilityIdentifier("OpenTemplates")
-            FilterChip(title: "Knowledge", systemImage: "books.vertical", isSelected: false) { router.open(.knowledge) }
-                .accessibilityIdentifier("OpenKnowledge")
-            FilterChip(title: "AI chat", systemImage: "bubble.left.and.text.bubble.right", isSelected: false) { router.open(.aiChat) }
-                .accessibilityIdentifier("OpenAIChat")
-            FilterChip(title: "Saved chats", systemImage: "tray.full", isSelected: false) { router.open(.conversations) }
-                .accessibilityIdentifier("OpenSavedChats")
-            if connection.canUseVault {
-                FilterChip(title: "Vault", systemImage: "lock", isSelected: false) { router.open(.vault) }
-                    .accessibilityIdentifier("OpenVault")
-            }
-            FilterChip(title: "Public links", systemImage: "link", isSelected: false) { router.open(.shares) }
-        }
-    }
-}
-
 /// Type and send. A bare URL is saved as a link, anything else as a note.
 private struct QuickCaptureBar: View {
     @Environment(OutboxService.self) private var outbox
     @Environment(Router.self) private var router
     @Environment(\.hearth) private var hearth
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var text = ""
     @State private var sending = false
@@ -142,31 +107,39 @@ private struct QuickCaptureBar: View {
 
     var body: some View {
         HearthCard(padding: HearthSpacing.md) {
-            VStack(alignment: .leading, spacing: HearthSpacing.md) {
-                HStack(alignment: .bottom, spacing: HearthSpacing.sm) {
-                    TextField("Jot something, or paste a link", text: $text, axis: .vertical)
-                        .lineLimit(1...6)
-                        .focused($focused)
-                        .font(HearthFont.body)
-                        .padding(.vertical, HearthSpacing.sm)
-                        .accessibilityIdentifier("QuickCaptureField")
-                    Button(action: send) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(canSend ? hearth.accent : hearth.textTertiary)
-                    }
-                    .disabled(!canSend)
-                    .accessibilityLabel("Save")
-                    .accessibilityIdentifier("QuickCaptureSend")
-                }
-                FlowLayout(spacing: HearthSpacing.sm) {
+            HStack(alignment: .bottom, spacing: HearthSpacing.sm) {
+                Menu {
                     ForEach(CaptureKind.allCases) { kind in
-                        FilterChip(title: kind.title, systemImage: kind.symbol, isSelected: false) {
-                            router.capture = kind
+                        Button { router.capture = kind } label: {
+                            Label("New \(kind.title.lowercased())", systemImage: kind.symbol)
                         }
-                        .accessibilityLabel("New \(kind.title.lowercased())")
                     }
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 30))
+                        .foregroundStyle(hearth.accent)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
+                .accessibilityLabel("New item")
+                .accessibilityHint("Choose a note, link, task or image")
+                .accessibilityIdentifier("QuickCaptureMenu")
+                TextField("Quick note", text: $text,
+                          prompt: Text(typeSize.isAccessibilitySize ? "Note" : "Write a note or paste a link")
+                            .foregroundStyle(hearth.textTertiary), axis: .vertical)
+                    .lineLimit(1...6)
+                    .focused($focused)
+                    .font(HearthFont.body)
+                    .padding(.vertical, HearthSpacing.sm)
+                    .accessibilityIdentifier("QuickCaptureField")
+                Button(action: send) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(canSend ? hearth.accent : hearth.textTertiary)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .disabled(!canSend)
+                .accessibilityLabel("Save")
+                .accessibilityIdentifier("QuickCaptureSend")
             }
         }
     }
@@ -188,6 +161,55 @@ private struct QuickCaptureBar: View {
                 focused = false
             }
         }
+    }
+}
+
+private struct HomeActions: View {
+    @Environment(Router.self) private var router
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: HearthSpacing.sm))
+            : AnyLayout(HStackLayout(spacing: HearthSpacing.sm))
+        layout {
+            Button { router.open(.aiChat) } label: {
+                Label("Ask AI", systemImage: "bubble.left.and.text.bubble.right")
+            }
+            .accessibilityIdentifier("OpenAIChat")
+            Button { router.open(.library) } label: {
+                Label("Library", systemImage: "rectangle.stack")
+            }
+            .accessibilityHint("Outline, review, shelves, saved views and more")
+            .accessibilityIdentifier("OpenLibrary")
+        }
+        .buttonStyle(.hearthSecondary)
+    }
+}
+
+private struct PairingNotice: View {
+    @Environment(Router.self) private var router
+    @Environment(\.hearth) private var hearth
+
+    var body: some View {
+        HearthCard(padding: HearthSpacing.md) {
+            HStack(alignment: .top, spacing: HearthSpacing.md) {
+                Image(systemName: "exclamationmark.lock")
+                    .foregroundStyle(hearth.danger)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pairing revoked").font(HearthFont.subheadline)
+                    Text("Pair this phone again to see and sync your library. Waiting changes stay queued.")
+                        .font(HearthFont.caption)
+                        .foregroundStyle(hearth.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Pair again") { router.showPairing = true }
+                    .font(HearthFont.subheadline)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("PairingNotice")
     }
 }
 

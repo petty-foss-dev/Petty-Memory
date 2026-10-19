@@ -107,6 +107,13 @@ class MemoryUITestCase: XCTestCase {
         try waitUntil(element("Toast"), NSPredicate(format: "exists == false"))
     }
 
+    func openLibraryTool(_ identifier: String) throws {
+        try require(app.buttons["OpenLibrary"], "Home has no Library button.").tap()
+        let tool = element(identifier)
+        try reveal(tool, "Library has no \(identifier) destination.")
+        tool.tap()
+    }
+
     /// Scrolls the current screen down until the element can be tapped.
     func reveal(_ element: XCUIElement, _ message: String) throws {
         try require(element, message)

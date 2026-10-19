@@ -15,7 +15,7 @@ final class ChatUITests: MemoryUITestCase {
         let marker = String(Int.random(in: 10_000_000...99_999_999))
         let title = "Chat source \(marker)"
 
-        try require(element("OpenOutline"), "Home has no Outline shortcut.").tap()
+        try openLibraryTool("OpenOutline")
         let composer = element("OutlineComposer")
         try reveal(composer, "The outline has no composer.")
         composer.tap()
@@ -101,7 +101,7 @@ final class ChatUITests: MemoryUITestCase {
         let excluded = "Organize second \(marker)"
         let destination = "Garden \(marker)"
 
-        try require(element("OpenOutline"), "Home has no Outline shortcut.").tap()
+        try openLibraryTool("OpenOutline")
         let composer = element("OutlineComposer")
         for title in [kept, excluded] {
             try reveal(composer, "The outline has no composer.")

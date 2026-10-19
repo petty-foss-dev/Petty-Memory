@@ -32,7 +32,8 @@ final class PowerUITests: MemoryUITestCase {
 
         try waitForToastToClear()
         app.buttons["Dock_home"].tap()
-        try require(app.buttons["New image"], "Home has no image capture.").tap()
+        try require(app.buttons["QuickCaptureMenu"], "Home has no capture menu.").tap()
+        try require(app.buttons["New image"], "The capture menu has no image action.").tap()
         try require(app.buttons["ImageFromPhotos"], "Image capture has no Photos picker.").tap()
         try waitUntil(app.buttons["ImageFromPhotos"], NSPredicate(format: "hittable == false"), "The system Photos picker didn't open.")
         // Photos' remote picker doesn't expose cells to the runtime snapshot; the seeded newest photo is the first tile.
@@ -85,7 +86,7 @@ final class PowerUITests: MemoryUITestCase {
 
         try waitForToastToClear()
         app.buttons["Dock_home"].tap()
-        try require(element("OpenSavedChats"), "Home has no Saved chats shortcut.").tap()
+        try openLibraryTool("OpenSavedChats")
         try require(app.searchFields.firstMatch, "Saved chats has no search field.").tap()
         app.typeText(marker)
         let row = savedChatRow(title)
@@ -212,7 +213,7 @@ final class PowerUITests: MemoryUITestCase {
         _ = try Fixture.required("MEMORY_POWER_FIXTURE", for: "review, merging and image text against the seeded power fixture")
         let server = try await launchPaired()
 
-        try require(element("OpenReview"), "Home has no Daily review shortcut.").tap()
+        try openLibraryTool("OpenReview")
         let firstID = try await scheduleFirstReviewCard(server, chip: "ReviewIn1", days: 1, open: true)
         try waitForToastToClear()
         let secondID = try await scheduleFirstReviewCard(server, chip: "ReviewIn7", days: 7, open: false)

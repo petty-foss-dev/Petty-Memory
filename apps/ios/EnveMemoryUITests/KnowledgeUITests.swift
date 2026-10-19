@@ -501,9 +501,7 @@ final class KnowledgeUITests: MemoryUITestCase {
     }
 
     private func openKnowledge(_ area: String) throws {
-        let hub = app.buttons["OpenKnowledge"]
-        try reveal(hub, "Home has no Knowledge shortcut.")
-        hub.tap()
+        try openLibraryTool("OpenKnowledge")
         let connecting = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Connecting to your computer")).firstMatch
         try waitUntil(connecting, NSPredicate(format: "exists == false"), "Knowledge never reached the host.")
         let row = app.buttons["Knowledge-\(area)"]

@@ -22,7 +22,7 @@ struct GettingStartedCard: View {
                             .accessibilityIdentifier("GettingStartedHide")
                     }
                     Step(done: hasItems, title: "Capture your first note",
-                         detail: hasItems ? "Your library already has notes." : "Type above, dictate a note, or read the text from a photo.",
+                         detail: hasItems ? "Your library already has notes." : "Use quick capture on Home, dictate a note, or read the text from a photo.",
                          action: hasItems ? nil : "New note") { router.capture = .note }
                     Step(title: "Review what's due", detail: "Daily review brings notes back when it's time to look again, and you choose when to see each one next.",
                          action: "Daily review") { router.open(.review) }

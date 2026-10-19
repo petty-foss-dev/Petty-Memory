@@ -12,7 +12,7 @@ final class WorkflowsUITests: MemoryUITestCase {
         let viewName = "Workflow view \(marker)"
         let renamed = "\(viewName) renamed"
 
-        try require(element("OpenOutline"), "Home has no Outline shortcut.").tap()
+        try openLibraryTool("OpenOutline")
         let composer = element("OutlineComposer")
         try reveal(composer, "The outline has no composer.")
         composer.tap()
@@ -50,7 +50,7 @@ final class WorkflowsUITests: MemoryUITestCase {
 
         try waitForToastToClear()
         app.buttons["Dock_home"].tap()
-        try require(element("OpenTemplates"), "Home has no Templates shortcut.").tap()
+        try openLibraryTool("OpenTemplates")
         let templateRow = row(templateName)
         try reveal(templateRow, "“\(templateName)” isn't in the template library.")
         snapshot("Template library")
@@ -73,7 +73,7 @@ final class WorkflowsUITests: MemoryUITestCase {
 
         try waitForToastToClear()
         app.buttons["Dock_home"].tap()
-        try require(element("OpenSavedViews"), "Home has no Saved views shortcut.").tap()
+        try openLibraryTool("OpenSavedViews")
         let newView = try require(app.buttons["NewSavedView"], "Saved views has no New view button.")
         try waitUntil(newView, NSPredicate(format: "enabled == true"), "New view stayed disabled while connected.")
         newView.tap()

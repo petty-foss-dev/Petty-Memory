@@ -111,6 +111,7 @@ struct MainView: View {
     private func destination(_ route: Route) -> some View {
         Group {
             switch route {
+            case .library: LibraryView()
             case .item(let id): ItemDetailView(itemID: id)
             case .project(let id): ProjectBriefingView(projectID: id)
             case .shelf(let shelf): ShelfView(shelf: shelf)

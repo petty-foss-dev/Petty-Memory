@@ -189,7 +189,7 @@ struct SettingsView: View {
                     HearthDivider()
                     Toggle(isOn: Binding(get: { !gettingStartedDismissed }, set: { gettingStartedDismissed = !$0 })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Getting started on Home").font(HearthFont.subheadline)
+                            Text("Getting started in Library").font(HearthFont.subheadline)
                             Text("A short checklist of capture, review, import and optional AI").font(HearthFont.caption).foregroundStyle(hearth.textSecondary)
                         }
                     }

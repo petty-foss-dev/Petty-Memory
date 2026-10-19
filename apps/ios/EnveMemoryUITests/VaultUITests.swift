@@ -9,7 +9,7 @@ final class VaultUITests: MemoryUITestCase {
         let secret = Fixture.value("MEMORY_VAULT_CHILD_SECRET") ?? "UI fixture secret text"
         _ = try await launchPaired()
 
-        try require(element("OpenVault"), "Home has no Vault shortcut: the fixture token needs the secrets scope.").tap()
+        try openLibraryTool("OpenVault")
         let passphraseField = try require(element("VaultPassphrase"), "The vault didn't offer to unlock.")
         XCTAssertFalse(shows(parentTitle), "A secret title showed before unlocking.")
         passphraseField.tap()
