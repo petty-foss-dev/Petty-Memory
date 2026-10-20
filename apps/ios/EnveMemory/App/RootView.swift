@@ -134,6 +134,8 @@ struct MainView: View {
             case .research(let location): ResearchSourceView(location: location)
             case .transcript(let id): TranscriptDetailView(transcriptID: id)
             case .watchedSource(let id): WatchedSourceView(sourceID: id)
+            case .biscottiMeetings: BiscottiMeetingsView()
+            case .meetingChat(let seed): AIChatView(meetingSeed: seed)
             }
         }
         .id(route)

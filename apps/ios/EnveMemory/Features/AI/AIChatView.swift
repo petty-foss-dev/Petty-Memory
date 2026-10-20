@@ -25,7 +25,18 @@ struct ChatContext: Equatable {
 
 /// The conversation lives only on this screen until the user saves it; nothing is cached or queued.
 struct AIChatView: View {
-    var savedConversationID: String?
+    let savedConversationID: String?
+    private let meetingSeed: MeetingChatSeed?
+
+    /// A meeting seed sets the starting context and draft once; it's never sent on its own.
+    init(savedConversationID: String? = nil, meetingSeed: MeetingChatSeed? = nil) {
+        self.savedConversationID = savedConversationID
+        self.meetingSeed = meetingSeed
+        if let meetingSeed {
+            _context = State(initialValue: meetingSeed.context)
+            _draft = State(initialValue: meetingSeed.prompt)
+        }
+    }
 
     @Environment(Connection.self) private var connection
     @Environment(ProjectStore.self) private var projects
@@ -76,6 +87,13 @@ struct AIChatView: View {
         HearthScreen(title: "AI chat", overline: "Library") {
             ProviderDisclosure(status: status, error: statusError, isOnline: connection.isOnline) { Task { await loadStatus() } }
             controls
+            if let meetingSeed, meetingSeed.context == context, turns.isEmpty, pending == nil {
+                Label("Drafted from your meeting “\(meetingSeed.title)”. Check the message below, then send it; nothing is sent until you do.",
+                      systemImage: "person.2.wave.2")
+                    .font(HearthFont.footnote)
+                    .foregroundStyle(hearth.textSecondary)
+                    .accessibilityIdentifier("ChatMeetingSeed")
+            }
             if let saved { savedNote(saved) }
             if startedOver, turns.isEmpty, pending == nil {
                 Label("New conversation. Changes you already applied stay in your notes.", systemImage: "arrow.counterclockwise")

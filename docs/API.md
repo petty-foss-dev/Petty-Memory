@@ -189,6 +189,8 @@ Outline operations preserve existing item identities and content. Nesting is sep
 
 ## Knowledge workspace
 
+Meeting imports are described in [Biscotti integration](BISCOTTI.md#cli-and-api): `POST /imports/biscotti/preview`, `POST /imports/biscotti` (read + write), and `GET /meetings/biscotti` (read). Preview is transient; Apply uses normal idempotent replay. No endpoint forwards requests to the host's Biscotti app.
+
 These routes are below `/api/v1/knowledge`. All require `read`; mutations and provider/recognition requests also require `write`. Run/preview/analyze/recognition/transcription routes are transient and never enter the HTTP replay cache. The desktop uses the same handlers through its allow-listed `knowledge.request` bridge.
 
 | Routes | Purpose |

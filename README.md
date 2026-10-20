@@ -99,12 +99,13 @@ The comparison above covers Daftak's 17 public feature groups. These additions g
 - **Enve book highlights.** Preview and import highlights, annotations and bookmarks from Enve Book Player's JSON or Markdown export. Importing again doesn't create duplicates. Enve's export has no book identifiers or source links, so there is no live sync or deep link back into a book.
 - **Getting started.** A first-run checklist on desktop, browser and iPhone. AI and accounts stay optional.
 
-The Knowledge workspace adds seven further workflows:
+The Knowledge workspace adds eight further workflows:
 
 - **Reusable AI commands.** Save a named instruction and scope, then run it against fresh notes. Review tasks, tags, reminders and briefs before Apply; guarded Undo remains available.
 - **Explicit organization preferences.** Save filing and organization instructions, optionally per project, and choose which ones each workflow or organization request should use.
 - **Typed collections.** Add text, number, date, checkbox and select fields, then use table, card or Kanban layouts with typed filtering and sorting.
 - **Audio research.** Record or import audio, preview/save timestamped captions, seek to cues and keep source-linked passages. Optional transcription uses a separately configured speech server with confirmation for each recording.
+- **Biscotti meetings.** Preview and import selected meeting summaries, notes and speaker transcripts on desktop, in the browser or on iPhone. The Mac desktop app can browse Biscotti directly and open recording timestamps. Prepare for the next meeting, draft follow-ups or a brief, and schedule a review through the existing AI and review tools. Reimports preserve your edits. [Meeting guide](docs/BISCOTTI.md) · [Fictional sample CSV](examples/biscotti-meetings.csv).
 - **PDF research.** Read and search by page, annotate exact passages, recognize scanned pages into reviewed text, and follow AI citations to a page or recording timestamp. Originals are retained.
 - **Watched sources.** Opt into checks for pages, RSS/Atom feeds or a locally approved folder. New and changed material waits for selected import or update, preserving originals and history.
 - **Information review.** Find older notes, mark them checked and review possible conflicts using exact quotes and separate dates. Explicitly choose which ordinary note supersedes another; AI never silently rewrites claims.

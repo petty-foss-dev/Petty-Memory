@@ -381,3 +381,32 @@ ul.setup-steps li { flex-wrap: nowrap; align-items: flex-start; gap: 10px; paddi
 @media (max-width: 900px) {
   .pdf-reader, .evidence-pair { grid-template-columns: 1fr; }
 }
+
+.meetings-import { max-width: 80ch; }
+.meetings-import input[type='file'] { max-width: 100%; }
+.meetings-preview { border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 14px; background: var(--surface); }
+.meetings-preview h4 { margin: 0; }
+.meetings-preview-list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; border-top: 1px solid var(--border); }
+.meetings-entry { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.meetings-entry .meetings-pick, .meetings-entry .actions { margin: 0; }
+.meetings-entry.saved > .actions strong { color: var(--text-2); }
+.meetings-entry p { margin: 2px 0; }
+.meetings-warnings summary, .meetings-detail summary { cursor: pointer; color: var(--ember-text); }
+.meetings-warnings ul.plain li { align-items: baseline; }
+.meetings-detail { margin-top: 4px; }
+.meetings-detail h4 { margin: 10px 0 2px; }
+.meetings-speakers { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 6px 0; }
+.meetings-speaker { font-size: 0.78rem; padding: 1px 9px; border-radius: 999px; background: var(--ember-soft); color: var(--ember-text); overflow-wrap: anywhere; }
+.meetings-turns { list-style: none; margin: 4px 0; padding: 4px 8px; max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.meetings-turns li { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; padding: 3px 0; }
+.meetings-turn-speaker { font-weight: 600; color: var(--text-2); flex: none; }
+.meetings-turn-text { flex: 1 1 24ch; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.meetings-transcript { white-space: pre-wrap; overflow-wrap: anywhere; }
+.meetings .filters .field { flex: 1 1 200px; }
+.meetings-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 0 12px; }
+.meetings-card { display: flex; flex-direction: column; min-width: 0; }
+.meetings-card h3 { font-size: 1.02rem; min-width: 0; }
+.meetings-card h3 .link-btn { padding: 0; font: inherit; font-weight: 600; overflow-wrap: anywhere; }
+.meetings-card > .actions { margin: 4px 0 0; }
+.meetings-summary { max-height: 6.5em; overflow: hidden; font-size: 0.92rem; color: var(--text-2); }
+.meetings-summary .prose > :first-child { margin-top: 0; }

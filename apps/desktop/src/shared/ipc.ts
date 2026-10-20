@@ -7,7 +7,8 @@ import type {
   RelatedItem, Rule, SaveLinkInput, SaveNoteInput, SavedView, SavedViewInput, SearchHit, Settings, SyncResult, Task, TemplateUseInput,
   UpdateItemInput, UpdateProjectInput, UpdateTaskInput, VaultState, ViewPage,
 } from '@enve-memory/core';
-import type { ImportResult, previewEnveHighlights } from '@enve-memory/importers';
+import type { BiscottiImportRequest, BiscottiImportResult, BiscottiMeetingPage, BiscottiPreview, ImportResult, previewEnveHighlights } from '@enve-memory/importers';
+import type { BiscottiQuery, BiscottiQueryResult } from './biscotti.ts';
 import type { KnowledgeRequest, ResearchFile, TranscriptionStatus } from './knowledge.ts';
 
 export type ThemeMode = 'system' | 'dark' | 'light';
@@ -230,6 +231,12 @@ export interface TaskQuery {
  * and nothing else reaches core.
  */
 export interface Api {
+  'biscotti.previewCsv': (data: string) => BiscottiPreview;
+  'biscotti.query': (options?: BiscottiQuery) => BiscottiQueryResult;
+  'biscotti.previewMeeting': (id: string) => BiscottiPreview;
+  'biscotti.import': (request: BiscottiImportRequest) => BiscottiImportResult;
+  'biscotti.list': (options?: { project?: string; before?: string; limit?: number }) => BiscottiMeetingPage;
+  'biscotti.open': (meetingId: string, seconds?: number) => void;
   'knowledge.request': (request: KnowledgeRequest) => unknown;
   'research.file': (sourceId: string) => ResearchFile;
   'research.saveAudio': (data: Uint8Array, filename: string, mimeType: string) => ItemDetail;
@@ -432,6 +439,12 @@ export type Method = keyof Api;
  * here fails to compile.
  */
 export const METHOD_KINDS: Record<Method, 'read' | 'write'> = {
+  'biscotti.previewCsv': 'read',
+  'biscotti.query': 'read',
+  'biscotti.previewMeeting': 'read',
+  'biscotti.import': 'write',
+  'biscotti.list': 'read',
+  'biscotti.open': 'read',
   'knowledge.request': 'read',
   'research.file': 'read',
   'research.saveAudio': 'write',

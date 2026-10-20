@@ -712,10 +712,44 @@ export function createChatView(ctx) {
     render();
   }
 
+  /** Prefills a request from elsewhere; like opening a saved chat, unsaved messages are only replaced after confirmation. */
+  async function startDraft({ mode: next, text, project: projectId = '', projectName = '', root = null }) {
+    if (sending || resuming || saving) {
+      show(error, 'Wait for the current reply to finish, then try again.');
+      return false;
+    }
+    if (next !== 'ask' && !writable) {
+      show(error, 'Suggesting actions needs a token with the write scope; this one can only ask.');
+      return false;
+    }
+    const unsent = message.value.trim();
+    const replacing = unsent && unsent !== text.trim();
+    if ((dirty() || replacing) && !(await confirmDialog({
+      title: 'Start a new chat with this draft?',
+      body: [dirty() ? 'This chat has messages you haven’t saved; they’ll be replaced.' : null, replacing ? 'Your unsent message will be replaced.' : null].filter(Boolean).join(' '),
+      confirmLabel: 'Start new chat',
+    }))) return false;
+    const had = turns.length > 0;
+    setMode(next);
+    clearConversation();
+    actionScope.value = 'notes';
+    topic.value = '';
+    if (root) target = { id: root.id, title: root.title, type: 'note' };
+    // The project list may not have loaded yet; keep the choice so the next refresh selects it.
+    if (projectId && ![...project.options].some((option) => option.value === projectId)) project.append(h('option', { value: projectId }, projectName || 'Project'));
+    project.value = next === 'ask' ? projectId : '';
+    message.value = text;
+    show(notice, `${had ? `${NEW_CHAT} ` : ''}Draft ready: edit it if you like. Nothing is sent until you press Send.`);
+    render();
+    message.focus();
+    return true;
+  }
+
   render();
   return {
     el,
     refresh,
+    startDraft,
     leave: stopDictation,
     dispose() {
       dictation?.cancel();

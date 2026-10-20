@@ -6,7 +6,7 @@ import { call, errorMessage, useLive } from '../lib/api.ts';
 import { type Turn, answerNote, chatMessages, chatTitle, draftProblem, savedMessages, savedTurns } from '../lib/chat.ts';
 import { displayTitle, firstLine } from '../lib/format.ts';
 import { DICTATION_NOTE, type Dictation, type DictationState, appendDictation, createDictation, speechRecognizer, systemDictationHelp } from '../lib/voice.ts';
-import { useApp } from '../context.ts';
+import { type AskSeed, useApp } from '../context.ts';
 import { Empty, Icon, TypeIcon, useFeedback } from '../ui.tsx';
 import { ActionsDialog, ActionsTurn } from './Actions.tsx';
 import { AiEditDialog } from './AiEdit.tsx';
@@ -106,7 +106,7 @@ function ProposalTurn({ proposal, onReview }: { proposal: EditProposal; onReview
 }
 
 /** A conversation on this screen: cited answers or reviewable changes, kept only if the user saves it. */
-export function Ask() {
+export function Ask({ seed }: { seed?: AskSeed }) {
   const { projects, openItem, go } = useApp();
   const { toast, confirm } = useFeedback();
   const status = useLive(() => call('ai.status'), []);
@@ -134,6 +134,8 @@ export function Ask() {
   const [naming, setNaming] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [caret, setCaret] = useState(0);
   const [voice, setVoice] = useState<DictationState>({ status: 'idle' });
   const [systemHelp, setSystemHelp] = useState(false);
   const [chosenPreferences, setChosenPreferences] = useState<string[]>([]);
@@ -145,10 +147,11 @@ export function Ask() {
   const sending = useRef(false);
   const dictation = useRef<Dictation | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const seeded = useRef<string | null>(null);
 
   const provider = status.data?.providers.find((p) => p.id === status.data?.provider);
   const recording = voice.status === 'starting' || voice.status === 'listening';
-  const busy = pending !== null || resuming;
+  const busy = pending !== null || resuming || seeding;
   const configured = Boolean(status.data && status.data.provider !== 'none');
   const needsTarget = mode === 'edit' || (mode === 'actions' && actionScope === 'notes');
   const usesProject = mode === 'ask' || (mode === 'actions' && actionScope === 'topic');
@@ -201,6 +204,50 @@ export function Ask() {
     setMode(next);
     setChosenPreferences([]);
   };
+
+  // A seed only fills the draft and scope; the person still reviews and sends it.
+  useEffect(() => {
+    if (!seed || seeded.current === seed.key) return;
+    let cancelled = false;
+    void (async () => {
+      if (dirty && !(await confirm({
+        title: 'Start a new chat?',
+        body: <p>This chat has messages you haven’t saved. Starting a new one replaces them.</p>,
+        confirmLabel: 'Start new chat',
+      }))) {
+        seeded.current = seed.key;
+        return;
+      }
+      if (cancelled) return;
+      setSeeding(true);
+      const root = seed.targetId ? await call('items.get', seed.targetId).then((item) => item, () => null) : null;
+      if (cancelled) return;
+      seeded.current = seed.key;
+      setNotice(null);
+      restart();
+      setMode(seed.mode);
+      setChosenPreferences([]);
+      setProject(seed.project ?? '');
+      setActionScope('notes');
+      setTopic('');
+      setTarget(root ? { id: root.id, title: displayTitle(root), type: root.type } : null);
+      setDraft(seed.draft);
+      setSeeding(false);
+      if (seed.targetId && !root) setError('That note isn’t available any more. Choose notes to work from.');
+      setCaret((n) => n + 1);
+    })();
+    return () => {
+      cancelled = true;
+      setSeeding(false);
+    };
+  }, [seed?.key]);
+
+  useEffect(() => {
+    const box = input.current;
+    if (!caret || !box) return;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  }, [caret]);
 
   const openSource = (source: Source) => {
     const locator = source.locator;

@@ -8,7 +8,17 @@ export type SettingsSection =
   | 'library' | 'mcp' | 'devices' | 'search' | 'ai' | 'automations' | 'sync' | 'vault' | 'sharing' | 'import' | 'backups' | 'export'
   | 'appearance' | 'about';
 
-export type KnowledgeSection = 'recipes' | 'collections' | 'research' | 'sources' | 'freshness' | 'preferences';
+export type KnowledgeSection = 'recipes' | 'collections' | 'research' | 'meetings' | 'sources' | 'freshness' | 'preferences';
+
+/** A prefilled chat opened from another view. Each new `key` is applied once; nothing is sent until the person presses Send. */
+export interface AskSeed {
+  key: string;
+  mode: 'ask' | 'actions';
+  draft: string;
+  project?: string;
+  /** The note an actions chat works from. */
+  targetId?: string;
+}
 
 /** Research locators: a PDF page and quote, or an audio time in seconds, optionally inside one transcript. */
 export interface KnowledgeRoute {
@@ -31,7 +41,7 @@ export type Route =
   | { view: 'project'; id: string; supersede?: string }
   | { view: 'tasks' }
   | { view: 'review' }
-  | { view: 'ask' }
+  | { view: 'ask'; seed?: AskSeed }
   | { view: 'activity' }
   | { view: 'graph' }
   | { view: 'shelf'; shelf: Shelf }

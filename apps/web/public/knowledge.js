@@ -1,6 +1,7 @@
 import { del, get, patch, post } from './api.js';
 import { clear, h } from './dom.js';
 import { createCollectionsSection } from './knowledge-collections.js';
+import { createMeetingsSection } from './knowledge-meetings.js';
 import { createPreferencesSection } from './knowledge-preferences.js';
 import { createRecipesSection } from './knowledge-recipes.js';
 import { createResearchSection } from './knowledge-research.js';
@@ -34,6 +35,7 @@ const SECTIONS = [
   ['recipes', 'Workflows', createRecipesSection],
   ['collections', 'Collections', createCollectionsSection],
   ['research', 'Research', createResearchSection],
+  ['meetings', 'Meetings', createMeetingsSection],
   ['sources', 'Sources', createSourcesSection],
   ['review', 'Information review', createReviewSection],
   ['preferences', 'Organization preferences', createPreferencesSection],
@@ -67,7 +69,7 @@ export function createKnowledgeView(ctx) {
 
   const el = h('section', { class: 'view knowledge', 'aria-labelledby': 'knowledge-heading' },
     h('header', { class: 'view-head' }, h('h1', { id: 'knowledge-heading' }, 'Knowledge')),
-    h('p', { class: 'hint' }, 'Reusable AI workflows, typed collections, PDF and recording research, watched sources, information review and organization preferences. Nothing here changes your library until you review and apply it.'),
+    h('p', { class: 'hint' }, 'Reusable AI workflows, typed collections, PDF and recording research, Biscotti meetings, watched sources, information review and organization preferences. Nothing here changes your library until you review and apply it.'),
     h('nav', { 'aria-label': 'Knowledge sections' }, h('ul', { class: 'chips knowledge-tabs' }, tabs.map((tab) => h('li', null, tab)))),
     body);
 

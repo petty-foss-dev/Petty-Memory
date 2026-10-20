@@ -48,7 +48,9 @@
 		5DADA156231004CBD9A5ADAD /* ProjectPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E89D18174C64539EAE9E8E /* ProjectPicker.swift */; };
 		5E642A06A2E1DA55CD0CB127 /* MantelDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCCD53DB82AF044C4FCA106 /* MantelDock.swift */; };
 		5F4FC1A2A98F87351584FF0E /* OrganizationReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DBE6FFF54229A95D9644515 /* OrganizationReviewSheet.swift */; };
+		60E342CC4E6E61FA4E450CD1 /* BiscottiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C5E9CD7C11DE75E08937D3D /* BiscottiUITests.swift */; };
 		60FE752F463EB651DD6689F1 /* ProjectBriefingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F135FF4EB37724C53589C4 /* ProjectBriefingView.swift */; };
+		61386B406153F89DD3AA15A0 /* BiscottiMeetingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD1FE90B49D77A4820408816 /* BiscottiMeetingsView.swift */; };
 		67516143D7D1EB6F129D8BBD /* ItemViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E61E76630B8369D48137D2 /* ItemViews.swift */; };
 		679A9DEED82E99827FEB89E3 /* EnveMemoryKit in Frameworks */ = {isa = PBXBuildFile; productRef = 32DF1E7F64E6729C36393C5C /* EnveMemoryKit */; };
 		6D668658861990EC2A53EDF4 /* ActionReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF1A1E470D718777D65A258B /* ActionReviewSheet.swift */; };
@@ -162,6 +164,7 @@
 		03F1455D61969433D5654098 /* VaultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultView.swift; sourceTree = "<group>"; };
 		093CA94646F9944A069F35A7 /* WorkflowsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowsView.swift; sourceTree = "<group>"; };
 		0B0FB8A402F09DA271001499 /* EnveMemoryShare.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = EnveMemoryShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0C5E9CD7C11DE75E08937D3D /* BiscottiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiscottiUITests.swift; sourceTree = "<group>"; };
 		0D8F99E5186F28FE99B3DCAD /* EnveMemoryUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EnveMemoryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		101F88FA1893C12544D676D0 /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
 		137C36780F2858F230AB48C4 /* VersionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionDetailView.swift; sourceTree = "<group>"; };
@@ -249,6 +252,7 @@
 		D7C14DE2D8E3D91B93431282 /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
 		D8838636496DFCC51AFF23EB /* ResearchFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResearchFiles.swift; sourceTree = "<group>"; };
 		DA7967AC5303CB4C8238FA95 /* CollectionBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionBoard.swift; sourceTree = "<group>"; };
+		DD1FE90B49D77A4820408816 /* BiscottiMeetingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiscottiMeetingsView.swift; sourceTree = "<group>"; };
 		DDE1C425530AAAA42194A021 /* KnowledgeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeUITests.swift; sourceTree = "<group>"; };
 		DE303752A23DA12C410D5B26 /* ProjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStore.swift; sourceTree = "<group>"; };
 		E134065CEE9C3759E3EB8BDD /* Dictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictation.swift; sourceTree = "<group>"; };
@@ -308,6 +312,7 @@
 				69215C261386D4C6D47EA975 /* Imports */,
 				CE8EFFC4CB814C83DCD2884E /* Items */,
 				437409B4A9270B5E51C309D8 /* Knowledge */,
+				357AE925F55B335C1F0E2AA2 /* Meetings */,
 				85E8A936B829251DB6932D55 /* Onboarding */,
 				D73E600ED461DCDA62CE2E67 /* Outline */,
 				9A32DFDBFC5B355F259E8F83 /* Projects */,
@@ -390,6 +395,14 @@
 				4E1F42F26BC69F0753041585 /* ReminderScheduler.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		357AE925F55B335C1F0E2AA2 /* Meetings */ = {
+			isa = PBXGroup;
+			children = (
+				DD1FE90B49D77A4820408816 /* BiscottiMeetingsView.swift */,
+			);
+			path = Meetings;
 			sourceTree = "<group>";
 		};
 		3913036ADD6D10D7DC153177 /* EnveMemory */ = {
@@ -622,6 +635,7 @@
 		F67A969D604190C07695D46E /* EnveMemoryUITests */ = {
 			isa = PBXGroup;
 			children = (
+				0C5E9CD7C11DE75E08937D3D /* BiscottiUITests.swift */,
 				7AA2F54563DC0457034A932A /* ChatUITests.swift */,
 				BECE8F6385526560F78B9E4B /* HomeUITests.swift */,
 				DDE1C425530AAAA42194A021 /* KnowledgeUITests.swift */,
@@ -789,6 +803,7 @@
 				52FA3001911EC01714369961 /* AttachmentTextSheet.swift in Sources */,
 				3A71EE30A2371362EAAF918F /* AudioPlayback.swift in Sources */,
 				F16C2B5A9F86C6B2B583C84C /* AudioResearchView.swift in Sources */,
+				61386B406153F89DD3AA15A0 /* BiscottiMeetingsView.swift in Sources */,
 				0E198B652F1E042336238AB0 /* CaptureSheet.swift in Sources */,
 				FCA566D775408E8858951F5E /* CollectionBoard.swift in Sources */,
 				BA50EB081BCD09AD71317AF3 /* CollectionDetailView.swift in Sources */,
@@ -898,6 +913,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				60E342CC4E6E61FA4E450CD1 /* BiscottiUITests.swift in Sources */,
 				D0307A606F67967C8FEB1ABD /* ChatUITests.swift in Sources */,
 				ECD89BF54854D56DB0CCC263 /* HomeUITests.swift in Sources */,
 				CB6CA37F799FC98C0720B99E /* KnowledgeUITests.swift in Sources */,

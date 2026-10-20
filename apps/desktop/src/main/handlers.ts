@@ -8,6 +8,7 @@ import { localEmbeddingsSupported } from '@enve-memory/embeddings';
 import { type Item, type ItemFilter, MAX_SEALED_FILE_BYTES, MemoryError, SEALED_FILE_MIME, SEALED_FILE_NAME, pageCursor } from '@enve-memory/core';
 import {
   importBookmarks, importCsv, importEnveExport, importEnveHighlights, importMarkdownFolder, previewEnveHighlights,
+  importBiscottiMeetings, listBiscottiMeetings, previewBiscottiImport,
 } from '@enve-memory/importers';
 import { extractImageText, ingestItem } from '@enve-memory/ingestion';
 import { type BrowserWindow, dialog, shell } from 'electron';
@@ -23,6 +24,7 @@ import { REMOTE_TOKEN, remoteUrl } from './remote.ts';
 import type { PrefsFile } from './prefs.ts';
 import type { SecretStore } from './secrets.ts';
 import { TRANSCRIPTION_KEY, type TranscriptionStatus } from '../shared/knowledge.ts';
+import { BiscottiClient, biscottiLink } from './biscotti.ts';
 
 export interface HandlerContext {
   library: Library;
@@ -60,6 +62,10 @@ const highlightText = (value: unknown): string => {
 export function createHandlers(ctx: HandlerContext): Handlers {
   const { library, secrets, prefs } = ctx;
   const memory = () => library.memory;
+  const biscotti = new BiscottiClient();
+  const requireBiscottiMac = () => {
+    if (process.platform !== 'darwin') throw new DesktopError('unavailable', 'The direct Biscotti connection needs a Mac. Import a Biscotti CSV export here instead.');
+  };
 
   const shelfFilter = (shelf: Shelf): ItemFilter => {
     if (!SHELVES.includes(shelf)) throw new DesktopError('invalid', `Unknown shelf "${shelf}".`);
@@ -194,6 +200,26 @@ export function createHandlers(ctx: HandlerContext): Handlers {
   };
 
   return {
+    'biscotti.previewCsv': (data) => previewBiscottiImport(memory(), data, 'csv'),
+    'biscotti.query': (options) => {
+      requireBiscottiMac();
+      return biscotti.query(options);
+    },
+    'biscotti.previewMeeting': async (id) => {
+      requireBiscottiMac();
+      const meeting = await biscotti.meeting(id);
+      return previewBiscottiImport(memory(), [meeting], 'mcp');
+    },
+    'biscotti.import': (request) => importBiscottiMeetings(memory(), request),
+    'biscotti.list': (options) => listBiscottiMeetings(memory(), options),
+    'biscotti.open': async (id, seconds) => {
+      requireBiscottiMac();
+      try { await shell.openExternal(biscottiLink(id, seconds)); }
+      catch (error) {
+        if (error instanceof DesktopError) throw error;
+        throw new DesktopError('unavailable', 'Install and open Biscotti on this Mac to play the original meeting.');
+      }
+    },
     'knowledge.request': async (request) => {
       const result = await invokeKnowledgeRequest(memory(), request, {
         aiProvider: () => library.provider(), transcription: () => library.transcription(),

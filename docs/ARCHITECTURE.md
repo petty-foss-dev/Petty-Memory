@@ -84,6 +84,8 @@ Decisions, secret notes and archived items stay outside AI edit scopes; MCP has 
 
 ## Daily knowledge workflows
 
+Biscotti meeting imports use `packages/importers`, shared by the CLI, REST and desktop handlers. Preview validates the source, reports duplicates and returns a source fingerprint; Apply validates the selected IDs against the same source and creates ordinary notes through core. The desktop-only connector reads fixed, local Biscotti MCP tools with bounded responses and no redirects. Remote clients import text they explicitly supply; no REST route proxies the host's Biscotti connection or opens audio paths. See [meeting integration](BISCOTTI.md).
+
 `chats`, `review`, `insights` and `actions` are core services. Saved chats and review schedules use versioned ordinary-note metadata, with normal history, export and sync. Conversations are saved only on request; their readable body is the transcript. Action scopes, review and connection discovery exclude saved chats and workflow definitions as well as secrets and decisions.
 
 AI action previews use a bounded source snapshot and stable references, then core validates every operation. Selected actions apply atomically, with generated tasks and briefs excluded from capture automations and automatic enrichment. Apply records an immutable result/Undo receipt in the same transaction; retries cannot authorize Undo over newer edits. Duplicate merges use the existing editor journal, retaining source attachments on the archived original and moving children to the surviving note.

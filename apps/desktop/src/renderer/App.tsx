@@ -228,7 +228,7 @@ export function App() {
           {route.view === 'shelf' && <ShelfView shelf={route.shelf} />}
           {route.view === 'reminders' && <RemindersView />}
           <Suspense fallback={<div className="page" role="status">Loading…</div>}>
-            {route.view === 'ask' && <Ask />}
+            {route.view === 'ask' && <Ask seed={route.seed} />}
             {route.view === 'review' && <Review />}
             {route.view === 'views' && <SavedViews id={route.id} />}
             {route.view === 'templates' && <Templates />}

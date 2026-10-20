@@ -64,6 +64,9 @@ enum Route: Hashable {
     case research(ResearchLocation)
     case transcript(String)
     case watchedSource(String)
+    case biscottiMeetings
+    /// AI chat with a draft about an imported meeting; nothing is sent until the user sends it.
+    case meetingChat(MeetingChatSeed)
 }
 
 enum CaptureKind: String, CaseIterable, Identifiable {

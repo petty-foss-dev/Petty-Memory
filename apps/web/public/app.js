@@ -150,6 +150,11 @@ function showShell(root) {
       views.knowledge.reveal({ ...locator, section: 'research' });
       show('knowledge');
     },
+    /** Opens AI chat with an editable draft: `{mode, text, project?, projectName?, root?: {id, title}}`. Nothing is sent until Send. */
+    startChat(draft) {
+      show('chat');
+      return views.chat.startDraft(draft);
+    },
     async changed({ outline: refreshOutline = true, detail: refreshDetail = true } = {}) {
       await Promise.all([
         refreshOutline ? outline.refresh() : null,

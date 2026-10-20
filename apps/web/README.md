@@ -78,6 +78,8 @@ This syntax-checks every file and type-checks the launcher.
 
 ## Knowledge workspace
 
+**Meetings** previews Biscotti CSV exports before importing selected meetings into a project. It lists saved meetings with speaker and project filters, unsent AI chat shortcuts for questions, preparation, reviewed follow-ups and briefs, and review scheduling. Existing imports are skipped. A read-only token can browse notes but cannot import or schedule. The direct connection to Biscotti runs in the Mac desktop app; the browser never contacts the Mac's loopback server. See the [meeting guide](../../docs/BISCOTTI.md).
+
 Open Knowledge for reusable AI workflows, explicitly selected organization preferences, typed collections, PDF/audio research, watched-source queues and information review. Every suggestion/import is reviewed before it changes ordinary content; originals and source locations are retained. Complex changes require the library host and are not queued offline.
 
 See [Knowledge workflows](../../docs/KNOWLEDGE_FEATURES.md) for examples, host speech-provider configuration, field/page/caption limits and device-local folder approval, and [verification](../../docs/KNOWLEDGE_VERIFICATION.md) for exercised journeys and remaining environment gates. Dictation still saves text only; Research recording separately offers explicit audio recording and Save/Discard.

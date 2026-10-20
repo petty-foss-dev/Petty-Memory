@@ -27,6 +27,7 @@ export interface ItemFilter {
   reminders?: boolean;
   type?: string;
   tag?: string;
+  importedKind?: string;
   includeArchived?: boolean;
   /** Only items marked for review. */
   review?: boolean;
@@ -559,6 +560,10 @@ export class ItemService {
     if (filter.tag !== undefined) {
       where.push('EXISTS (SELECT 1 FROM item_tags it JOIN tags tg ON tg.id = it.tag_id WHERE it.item_id = i.id AND tg.name = ?)');
       params.push(normalizeTag(filter.tag));
+    }
+    if (filter.importedKind !== undefined) {
+      where.push("json_extract(i.metadata, '$.importedFrom.kind') = ?");
+      params.push(required(filter.importedKind, 'Import source'));
     }
     return { where, params };
   }

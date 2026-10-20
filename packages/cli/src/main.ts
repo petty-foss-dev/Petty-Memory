@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,7 @@ import { type ParseArgsConfig, parseArgs } from 'node:util';
 import { EnveMemory, MemoryError, type EditProposal, type EditorCommand, type ItemPresentation, type RuleConditions, type SavedViewInput, type Settings, defaultHome, listBackups, pathsFor, restoreBackup } from '@enve-memory/core';
 import { AiError, type AiProvider, PROVIDERS, PROVIDER_IDS, ask, chat, createProvider, enrichItem, enrichWorker, envKeys, isProviderId, organizeWorker, proposeEdit, providerFor } from '@enve-memory/ai';
 import { attachLocalEmbedder, indexWorker } from '@enve-memory/embeddings';
-import { importBookmarks, importCsv, importEnveExport, importMarkdownFolder, importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
+import { BISCOTTI_MAX_BYTES, importBiscottiMeetings, previewBiscottiImport, importBookmarks, importCsv, importEnveExport, importMarkdownFolder, importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
 import { extractImageText, ingestItem, processPending } from '@enve-memory/ingestion';
 import { DEFAULT_PORT, RemoteSyncClient, createApiServer, lanUrls, pairingLink } from '@enve-memory/api';
 import { SERVER_NAME, serveMemoryOverStdio } from '@enve-memory/mcp';
@@ -125,6 +125,7 @@ Bring things in
   import csv <file.csv>        Bookmark CSV (Raindrop, Pinboard, spreadsheets)  [-p project]
   import enve <export-folder>  Restore a Petty Memory export, keeping ids and dates
   import highlights <file>     Enve Book Player JSON/Markdown annotations  [-p project] [--preview]
+  import biscotti <file.csv>   Preview meeting notes; --apply saves selected meetings  [-p project] [--ids id,id]
   ocr <attachment-id>          Extract English text locally; does not save a note
 
 Automations
@@ -221,6 +222,8 @@ const { values: opts, positionals } = parseCommandLine({
     date: { type: 'string' },
     days: { type: 'string' },
     preview: { type: 'boolean' },
+    apply: { type: 'boolean' },
+    ids: { type: 'string' },
     exclude: { type: 'string', multiple: true },
     expires: { type: 'string' },
     yes: { type: 'boolean' },
@@ -623,6 +626,17 @@ async function run(memory: EnveMemory): Promise<void> {
     case 'import': {
       const [kind] = rest;
       const source = resolve(arg(1, 'path'));
+      if (kind === 'biscotti') {
+        if (statSync(source).size > BISCOTTI_MAX_BYTES) throw new UsageError('Choose a Biscotti export smaller than 8 MiB.');
+        const data = new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(source));
+        const preview = previewBiscottiImport(memory, data, 'csv');
+        if (!opts.apply || opts.preview) {
+          return emit(preview, `${preview.entries.length} meetings, ${preview.skipped} repeated rows, ${preview.warnings.length} warnings. No notes saved. Use --apply to import.`);
+        }
+        const includeIds = opts.ids ? opts.ids.split(',').map((id) => id.trim()) : preview.entries.map((entry) => entry.id);
+        const result = importBiscottiMeetings(memory, { data, source: 'csv', fingerprint: preview.fingerprint, includeIds, project: opts.project });
+        return emit(result, `Imported ${result.created} meetings, skipped ${result.skipped}, failed ${result.failed.length}.`);
+      }
       if (kind === 'highlights' && opts.preview) {
         const preview = previewEnveHighlights(readFileSync(source, 'utf8'));
         return emit(preview, `${preview.format}: ${preview.entries.length} passages, ${preview.skipped} duplicates in the file. No notes saved.`);
@@ -633,7 +647,7 @@ async function run(memory: EnveMemory): Promise<void> {
         : kind === 'enve' ? importEnveExport(memory, source)
         : kind === 'highlights' ? importEnveHighlights(memory, readFileSync(source, 'utf8'), { project: opts.project })
         : null;
-      if (!result) throw new UsageError('Usage: import bookmarks|markdown|csv|enve|highlights <path>');
+      if (!result) throw new UsageError('Usage: import bookmarks|markdown|csv|enve|highlights|biscotti <path>');
       if (opts.archive) await processPending(memory, { limit: 1000 });
       const failures = result.failed.slice(0, 10).map((f) => `  ${f.source}: ${f.error}`).join('\n');
       return emit(result, `Imported ${result.created}, skipped ${result.skipped} already here${result.failed.length ? `, ${result.failed.length} failed:\n${failures}` : '.'}`);

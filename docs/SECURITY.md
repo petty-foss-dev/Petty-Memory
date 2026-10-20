@@ -70,6 +70,8 @@ The desktop app encrypts API keys and the server-sync token for BYO AI providers
 
 ## Knowledge workflows
 
+Biscotti preview/import routes need both read and write scopes; meeting lists need read. Decoded source data is capped at 8 MiB/500 meetings; the escaped JSON envelope allows up to 48 MiB + 1024 bytes only on these routes, with explicit server limits still taking precedence. Previews bypass idempotency replay storage. Imports validate source fingerprints and selection before writing and never overwrite a prior source identity. The desktop connector uses a fixed `127.0.0.1:8516/mcp` endpoint, read-only tool calls, response/time limits and redirect rejection. It ignores recording paths. Neither the remote API nor saved text can initiate a host connection, start recording or read those files.
+
 New `/knowledge` routes require read access; mutations and provider/recognition requests also require write access. Workflow runs, transcript/OCR previews and conflict analysis bypass replay storage. Definition trees are excluded before AI retrieval and from action/review scopes. All reviewed changes use core validation, transactions, history and source-state checks.
 
 Audio recording starts on request, stops when leaving/backgrounding, and saves only explicitly. Optional transcription requires separate host configuration and confirmation for each recording. Credentials stay in the OS-encrypted store or environment. Redirects are refused and requests/responses bounded. Caption imports work without a provider. Scanned-page OCR uses bundled host Tesseract or native Vision; original files stay unchanged.

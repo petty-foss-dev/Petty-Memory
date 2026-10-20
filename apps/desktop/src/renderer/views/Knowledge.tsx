@@ -2,6 +2,7 @@ import { type KnowledgeRoute, type KnowledgeSection, useApp } from '../context.t
 import { Icon, type IconName } from '../ui.tsx';
 import { Collections } from './Collections.tsx';
 import { Freshness } from './KnowledgeFreshness.tsx';
+import { Meetings } from './Meetings.tsx';
 import { Preferences } from './Preferences.tsx';
 import { Recipes } from './Recipes.tsx';
 import { Research } from './Research.tsx';
@@ -11,12 +12,13 @@ const SECTIONS: { section: KnowledgeSection; label: string; icon: IconName; summ
   { section: 'recipes', label: 'Workflows', icon: 'sparkle', summary: 'Saved AI instructions you run on chosen notes, reviewing every suggested change.' },
   { section: 'collections', label: 'Collections', icon: 'filter', summary: 'Your own fields on items, as a table, cards or a Kanban board.' },
   { section: 'research', label: 'Research', icon: 'file', summary: 'Quote PDFs page by page, and transcribe and search meetings and lectures.' },
+  { section: 'meetings', label: 'Meetings', icon: 'mic', summary: 'Bring in Biscotti meeting notes and transcripts, then ask about them or plan follow-ups.' },
   { section: 'sources', label: 'Watched sources', icon: 'refresh', summary: 'Pages, feeds and folders checked for new material you review before import.' },
   { section: 'freshness', label: 'Information review', icon: 'history', summary: 'Find what’s gone unchecked and passages that may disagree.' },
   { section: 'preferences', label: 'Organization preferences', icon: 'pin', summary: 'Filing rules you choose to include in workflow and organization requests.' },
 ];
 
-/** The knowledge hub: workflows, collections, research, watched sources, information review and organization preferences. */
+/** The knowledge hub: workflows, collections, research, meetings, watched sources, information review and organization preferences. */
 export function Knowledge({ route }: { route: KnowledgeRoute }) {
   const { go } = useApp();
   return (
@@ -50,6 +52,7 @@ export function Knowledge({ route }: { route: KnowledgeRoute }) {
       {route.section === 'recipes' && <Recipes />}
       {route.section === 'collections' && <Collections />}
       {route.section === 'research' && <Research route={route} />}
+      {route.section === 'meetings' && <Meetings />}
       {route.section === 'sources' && <Sources />}
       {route.section === 'freshness' && <Freshness />}
       {route.section === 'preferences' && <Preferences />}

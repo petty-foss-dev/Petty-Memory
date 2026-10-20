@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { type ApiClient, type ClientScope, DrainWorker, type EnveMemory, INTENTS, MAX_SEALED_FILE_BYTES, MemoryError, parseWhen } from '@enve-memory/core';
 import { SourceWatcher, processPending } from '@enve-memory/ingestion';
 import { type AiProvider, AiError, providerFor } from '@enve-memory/ai';
-import { ENVE_HIGHLIGHT_MAX_BYTES } from '@enve-memory/importers';
+import { BISCOTTI_MAX_BYTES, ENVE_HIGHLIGHT_MAX_BYTES } from '@enve-memory/importers';
 import { createServer as createMcpServer } from '@enve-memory/mcp';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { type AuthInfo, createMcpHandler } from '@modelcontextprotocol/server';
@@ -17,6 +17,7 @@ import type { AudioTranscriptionConfig } from './knowledge.ts';
 export const DEFAULT_PORT = 49231;
 const MAX_JSON_BODY = 2 * 1024 * 1024;
 const MAX_IMPORT_JSON_BODY = ENVE_HIGHLIGHT_MAX_BYTES * 6 + 1024;
+const MAX_MEETING_JSON_BODY = BISCOTTI_MAX_BYTES * 6 + 1024;
 const MAX_RESEARCH_OCR_BODY = Math.ceil(20 * 1024 * 1024 / 3) * 4 + 4096;
 const MAX_FILE_BODY = 200 * 1024 * 1024;
 const MAX_SEALED_FILE_BODY = Math.ceil((MAX_SEALED_FILE_BYTES + 4096 + 9) / 3) * 4 + 1024;
@@ -241,10 +242,12 @@ export function createApiServer(memory: EnveMemory, options: ApiServerOptions): 
       if (replay) return replayResponse(res, replay);
       const fileEnvelope = req.method === 'PUT' && /^\/api\/v1\/vault\/items\/[^/]+\/attachments\/[^/]+$/.test(url.pathname);
       const importEnvelope = req.method === 'POST' && /^\/api\/v1\/imports\/enve-highlights(?:\/preview)?$/.test(url.pathname);
+      const meetingEnvelope = req.method === 'POST' && /^\/api\/v1\/imports\/biscotti(?:\/preview)?$/.test(url.pathname);
       const researchOcr = req.method === 'POST' && url.pathname === '/api/v1/knowledge/research/ocr';
       const bodyLimit = url.pathname === '/api/v1/sync' ? maxSync : fileEnvelope ? Math.min(maxUpload, MAX_SEALED_FILE_BODY)
         : importEnvelope && options.maxJsonBytes === undefined ? MAX_IMPORT_JSON_BODY
-          : researchOcr && options.maxJsonBytes === undefined ? Math.min(MAX_RESEARCH_OCR_BODY, Math.ceil(maxUpload / 3) * 4 + 4096) : maxJson;
+          : meetingEnvelope && options.maxJsonBytes === undefined ? MAX_MEETING_JSON_BODY
+            : researchOcr && options.maxJsonBytes === undefined ? Math.min(MAX_RESEARCH_OCR_BODY, Math.ceil(maxUpload / 3) * 4 + 4096) : maxJson;
       const body = req.method === 'GET' ? undefined : await readJson(req, bodyLimit);
       assertClientActive(memory, client);
       const route = match.route;

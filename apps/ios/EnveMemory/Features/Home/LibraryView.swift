@@ -39,6 +39,8 @@ struct LibraryView: View {
                                symbol: "doc.on.doc", route: .templates),
             LibraryDestination(id: "OpenKnowledge", title: "Knowledge", detail: "Workflows, collections, research and sources",
                                symbol: "books.vertical", route: .knowledge),
+            LibraryDestination(id: "OpenMeetings", title: "Meetings", detail: "Meeting notes, speakers and follow-ups",
+                               symbol: "person.2.wave.2", route: .biscottiMeetings),
         ]
     }
 

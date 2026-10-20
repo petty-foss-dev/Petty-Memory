@@ -1,7 +1,7 @@
 import { type ApiClient, type ClientScope, type EditProposal, type EditorCommand, type EnveMemory, INTENTS, type Intent, type ItemPresentation, type OrganizationProposal, type SavedViewInput, type SyncRecord } from '@enve-memory/core';
 import { type AiProvider, type ChatRequest, PROVIDERS, chat, proposeEdit } from '@enve-memory/ai';
 import { extractImageText } from '@enve-memory/ingestion';
-import { importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
+import { type BiscottiImportRequest, importBiscottiMeetings, listBiscottiMeetings, previewBiscottiImport, importEnveHighlights, previewEnveHighlights } from '@enve-memory/importers';
 import { HttpError } from './errors.ts';
 import { knowledgeRoutes, type AudioTranscriptionConfig } from './knowledge.ts';
 
@@ -228,6 +228,28 @@ export const routes: Route[] = [
   {
     method: 'POST', pattern: path('/imports/enve-highlights/preview'), scope: 'write',
     handle: ({ body }) => previewEnveHighlights(body?.data),
+  },
+  {
+    method: 'GET', pattern: path('/meetings/biscotti'), scope: 'read',
+    handle: ({ memory, query }) => listBiscottiMeetings(memory, {
+      project: query.get('project') || undefined, before: query.get('before') || undefined, limit: queryLimit(query),
+    }),
+  },
+  {
+    method: 'POST', pattern: path('/imports/biscotti/preview'), scope: 'write', transient: true,
+    handle: ({ memory, client, body }) => {
+      if (!client.scopes.includes('read')) throw new HttpError(403, 'insufficient_scope', 'Previewing meeting imports also needs read access.');
+      const source = body?.source ?? 'csv';
+      if (source !== 'csv' && source !== 'mcp') throw badField('source', 'csv or mcp');
+      return previewBiscottiImport(memory, body?.data, source);
+    },
+  },
+  {
+    method: 'POST', pattern: path('/imports/biscotti'), scope: 'write', status: 201,
+    handle: ({ memory, client, body }) => {
+      if (!client.scopes.includes('read')) throw new HttpError(403, 'insufficient_scope', 'Importing meetings also needs read access.');
+      return importBiscottiMeetings(memory, body as unknown as BiscottiImportRequest);
+    },
   },
   {
     method: 'POST', pattern: path('/imports/enve-highlights'), scope: 'write', status: 201,
