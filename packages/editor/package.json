@@ -22,16 +22,16 @@
     "prosemirror-history": "^1.0.0",
     "prosemirror-inputrules": "^1.0.0",
     "prosemirror-keymap": "^1.0.0",
-    "prosemirror-markdown": "^1.0.0",
+    "prosemirror-markdown": "^1.13.9",
     "prosemirror-model": "^1.0.0",
     "prosemirror-schema-list": "^1.0.0",
     "prosemirror-state": "^1.0.0",
-    "prosemirror-view": "^1.0.0"
+    "prosemirror-view": "^1.42.8"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
     "@types/markdown-it": "^14.0.0",
     "esbuild": "^0.28.2",
-    "jsdom": "^30.1.1"
+    "jsdom": "^30.1.3"
   }
 }
