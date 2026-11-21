@@ -7,6 +7,6 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@enve-memory/core": "0.1.0",
-    "@huggingface/transformers": "^4.3.0"
+    "@huggingface/transformers": "^4.3.2"
   }
 }
