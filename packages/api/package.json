@@ -10,11 +10,11 @@
     "@enve-memory/core": "0.1.0",
     "@enve-memory/importers": "0.1.0",
     "@enve-memory/mcp": "0.1.0",
-    "@modelcontextprotocol/node": "^2.1.0",
+    "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/server": "^2.1.0",
     "@enve-memory/ingestion": "0.1.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.1.0"
+    "@modelcontextprotocol/client": "^2.4.0"
   }
 }
